@@ -99,67 +99,55 @@ bool SetSystemTime(OSTime time)
 
 OSTime NTPGetTime(const char* hostname)
 {
-    ntp_packet packet;
-    memset(&packet, 0, sizeof(packet));
-
-    // Set the first byte's bits to 00,011,011 for li = 0, vn = 3, and mode = 3. The rest will be left set to zero.
-    packet.li_vn_mode = 0x1b;
-
-    // Create a socket
-    int sockfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-    if (sockfd < 0) {
-        return 0;
-    }
+    OSTime tick = 0;
 
     // Get host address by name
     struct hostent* server = gethostbyname(hostname);
-    if (!server) {
-        return 0;
+    if (server) {
+        // Create a socket
+        int sockfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+        if (sockfd > -1) {
+            // Prepare socket address
+            struct sockaddr_in serv_addr;
+            memset(&serv_addr, 0, sizeof(serv_addr));
+            serv_addr.sin_family = AF_INET;
+
+            // Copy the server's IP address to the server address structure.
+            memcpy(&serv_addr.sin_addr.s_addr, server->h_addr, server->h_length);
+
+            // Convert the port number integer to network big-endian style and save it to the server address structure.
+            serv_addr.sin_port = htons(123); // UDP port
+
+            // Call up the server using its IP address and port number.
+            if (connect(sockfd, (struct sockaddr*) &serv_addr, sizeof(serv_addr)) == 0) {
+                ntp_packet packet;
+                memset(&packet, 0, sizeof(packet));
+
+                // Set the first byte's bits to 00,011,011 for li = 0, vn = 3, and mode = 3. The rest will be left set to zero.
+                packet.li_vn_mode = 0x1b;
+
+                // Send it the NTP packet it wants. If n == -1, it failed.
+                if (write(sockfd, &packet, sizeof(packet)) == sizeof(packet)) {
+                    // Wait and receive the packet back from the server. If n == -1, it failed.
+                    if (read(sockfd, &packet, sizeof(packet)) == sizeof(packet)) {
+                        // These two fields contain the time-stamp seconds as the packet left the NTP server.
+                        // The number of seconds correspond to the seconds passed since 1900.
+                        // ntohl() converts the bit/byte order from the network's to host's "endianness".
+                        packet.txTm_s = ntohl(packet.txTm_s); // Time-stamp seconds.
+                        packet.txTm_f = ntohl(packet.txTm_f); // Time-stamp fraction of a second.
+
+                        // Convert seconds to ticks and adjust timestamp
+                        tick += OSSecondsToTicks(packet.txTm_s - NTP_TIMESTAMP_DELTA);
+                        // Convert fraction to ticks
+                        tick += OSNanosecondsToTicks((packet.txTm_f * 1000000000llu) >> 32);
+                    }
+                }
+
+                close(sockfd);
+            }
+        }
     }
 
-    // Prepare socket address
-    struct sockaddr_in serv_addr;
-    memset(&serv_addr, 0, sizeof(serv_addr));
-    serv_addr.sin_family = AF_INET;
-
-    // Copy the server's IP address to the server address structure.
-    memcpy(&serv_addr.sin_addr.s_addr, server->h_addr, server->h_length);
-
-    // Convert the port number integer to network big-endian style and save it to the server address structure.
-    serv_addr.sin_port = htons(123); // UDP port
-
-    // Call up the server using its IP address and port number.
-    if (connect(sockfd, (struct sockaddr*) &serv_addr, sizeof(serv_addr)) < 0) {
-        close(sockfd);
-        return 0;
-    }
-
-    // Send it the NTP packet it wants. If n == -1, it failed.
-    if (write(sockfd, &packet, sizeof(packet)) < 0) {
-        close(sockfd);
-        return 0;
-    }
-
-    // Wait and receive the packet back from the server. If n == -1, it failed.
-    if (read(sockfd, &packet, sizeof(packet)) < 0) {
-        close(sockfd);
-        return 0;
-    }
-
-    // Close the socket
-    close(sockfd);
-
-    // These two fields contain the time-stamp seconds as the packet left the NTP server.
-    // The number of seconds correspond to the seconds passed since 1900.
-    // ntohl() converts the bit/byte order from the network's to host's "endianness".
-    packet.txTm_s = ntohl(packet.txTm_s); // Time-stamp seconds.
-    packet.txTm_f = ntohl(packet.txTm_f); // Time-stamp fraction of a second.
-
-    OSTime tick = 0;
-    // Convert seconds to ticks and adjust timestamp
-    tick += OSSecondsToTicks(packet.txTm_s - NTP_TIMESTAMP_DELTA);
-    // Convert fraction to ticks
-    tick += OSNanosecondsToTicks((packet.txTm_f * 1000000000llu) >> 32);
     return tick;
 }
 
