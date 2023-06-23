@@ -35,9 +35,9 @@
 
 #define LI_UNSYNC 0xc0
 #define NTP_SERVER "fritz.box"
-#define MODE_MASK 0x7
-#define MODE_CLIENT 0x3
-#define MODE_SERVER 0x4
+#define MODE_MASK 0x07
+#define MODE_CLIENT 0x03
+#define MODE_SERVER 0x04
 
 // Important plugin information.
 WUPS_PLUGIN_NAME("Wii U Time Sync");
@@ -127,7 +127,7 @@ static OSTime NTPGetTime(const char* hostname)
 
             // Call up the server using its IP address and port number.
             if (connect(sockfd, (struct sockaddr*) &serv_addr, sizeof(serv_addr)) == 0) {
-                ntp_packet packet;
+                ntp_packet packet __attribute__((__aligned__(0x40)));
                 memset(&packet, 0, sizeof(packet));
 
                 // Set the first byte's bits to 00,001,011 for li = 0, vn = 1, and mode = 3. The rest will be left set to zero.
