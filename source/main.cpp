@@ -34,6 +34,7 @@
 #define NTP_TIMESTAMP_DELTA 3155673600llu
 
 #define LI_UNSYNC 0xc0
+#define NTP_SERVER "fritz.box"
 
 // Important plugin information.
 WUPS_PLUGIN_NAME("Wii U Time Sync");
@@ -148,6 +149,19 @@ static OSTime NTPGetTime(const char* hostname)
                             tick += OSSecondsToTicks(packet.txTm_s - NTP_TIMESTAMP_DELTA);
                             // Convert fraction to ticks
                             tick += OSNanosecondsToTicks((packet.txTm_f * 1000000000llu) >> 32);
+
+                            // Add offsets
+                            if (offsetHours < 0) {
+                                tick -= OSSecondsToTicks(abs(offsetHours) * 60 * 60);
+                            } else {
+                                tick += OSSecondsToTicks(offsetHours * 60 * 60);
+                            }
+
+                            if (enabledDST) {
+                                tick += OSSecondsToTicks(60 * 60); // DST adds an hour.
+                            }
+
+                            tick += OSSecondsToTicks(offsetMinutes * 60);
                         }
                     }
                 }
@@ -161,24 +175,7 @@ static OSTime NTPGetTime(const char* hostname)
 }
 
 static void updateTime() {
-    OSTime time = NTPGetTime("fritz.box"); // Connect to the time server.
-
-    if (time == 0) {
-        return; // Probably didn't connect correctly.
-    }
-
-    if (offsetHours < 0) {
-        time -= OSSecondsToTicks(abs(offsetHours) * 60 * 60);
-    } else {
-        time += OSSecondsToTicks(offsetHours * 60 * 60);
-    }
-
-    if (enabledDST) {
-        time += OSSecondsToTicks(60 * 60); // DST adds an hour.
-    }
-
-    time += OSSecondsToTicks(offsetMinutes * 60);
-
+    OSTime time = NTPGetTime(NTP_SERVER); // Connect to the time server.
     OSTime currentTime = OSGetTime();
     int timeDifference = abs(time - currentTime);
 
@@ -279,8 +276,11 @@ WUPS_GET_CONFIG() {
     OSCalendarTime ct;
     OSTicksToCalendarTime(OSGetTime(), &ct);
     char timeString[256];
-    snprintf(timeString, 255, "Current Time: %04d-%02d-%02d %02d:%02d:%02d:%04d:%04d\n", ct.tm_year, ct.tm_mon + 1, ct.tm_mday, ct.tm_hour, ct.tm_min, ct.tm_sec, ct.tm_msec, ct.tm_usec);
-    WUPSConfigItemStub_AddToCategoryHandled(settings, preview, "time", timeString);
+    snprintf(timeString, 255, "Current SYS Time: %04d-%02d-%02d %02d:%02d:%02d:%04d:%04d\n", ct.tm_year, ct.tm_mon + 1, ct.tm_mday, ct.tm_hour, ct.tm_min, ct.tm_sec, ct.tm_msec, ct.tm_usec);
+    WUPSConfigItemStub_AddToCategoryHandled(settings, preview, "sysTime", timeString);
+    OSTicksToCalendarTime(NTPGetTime(NTP_SERVER), &ct);
+    snprintf(timeString, 255, "Current NTP Time: %04d-%02d-%02d %02d:%02d:%02d:%04d:%04d\n", ct.tm_year, ct.tm_mon + 1, ct.tm_mday, ct.tm_hour, ct.tm_min, ct.tm_sec, ct.tm_msec, ct.tm_usec);
+    WUPSConfigItemStub_AddToCategoryHandled(settings, preview, "ntpTime", timeString);
 
     return settings;
 }
