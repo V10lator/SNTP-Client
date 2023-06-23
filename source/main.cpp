@@ -16,12 +16,14 @@
 #include <notifications/notifications.h>
 #include <whb/proc.h>
 #include <wups.h>
+#include <wups/config.h>
+#include <wups/config/WUPSConfigItemMultipleValues.h>
 #include <wups/config/WUPSConfigItemBoolean.h>
 #include <wups/config/WUPSConfigItemStub.h>
 #include <wups/config/WUPSConfigItemIntegerRange.h>
 
 #include "ConfigItemTime.h"
-#include <timezone.h>
+#include "timezone.h"
 
 #include <cstdlib>
 #include <cstdio>
@@ -31,8 +33,10 @@
 #define SYNCING_ENABLED_CONFIG_ID "enabledSync"
 #define DST_ENABLED_CONFIG_ID "enabledDST"
 #define NOTIFY_ENABLED_CONFIG_ID "enabledNotify"
+#define TIMEZONE_CONFIG_ID "timezone"
 // Seconds between 1900 (NTP epoch) and 2000 (Wii U epoch)
 #define NTP_TIMESTAMP_DELTA 3155673600llu
+#define DEFAULT_TIMEZONE 321
 
 #define LI_UNSYNC 0xc0
 #define NTP_SERVER "fritz.box"
@@ -188,8 +192,24 @@ static void updateTime() {
     }
 }
 
+static void timezoneChanged(ConfigItemMultipleValues *item, uint32_t index) {
+    setenv("TZ", timezonesPOSIX[index].valueName, 1);
+    tzset();
+    timezoneOffset = -_timezone;
+    if (_daylight) {
+        timezoneOffset += 3600;
+    }
+
+    WUPS_StoreInt(nullptr, TIMEZONE_CONFIG_ID, index);
+
+    if (enabledSync) {
+        updateTime();
+    }
+}
+
 INITIALIZE_PLUGIN() {
     WUPSStorageError storageRes = WUPS_OpenStorage();
+    int32_t i = 0;
     // Check if the plugin's settings have been saved before.
     if (storageRes == WUPS_STORAGE_ERROR_SUCCESS) {
         if ((storageRes = WUPS_GetBool(nullptr, SYNCING_ENABLED_CONFIG_ID, &enabledSync)) == WUPS_STORAGE_ERROR_NOT_FOUND) {
@@ -204,21 +224,16 @@ INITIALIZE_PLUGIN() {
             WUPS_StoreBool(nullptr, NOTIFY_ENABLED_CONFIG_ID, enabledNotify);
         }
 
+        if ((storageRes = WUPS_GetInt(nullptr, TIMEZONE_CONFIG_ID, &i)) == WUPS_STORAGE_ERROR_NOT_FOUND) {
+            i = DEFAULT_TIMEZONE;
+        }
+
         NotificationModule_InitLibrary(); // Set up for notifications.
         WUPS_CloseStorage(); // Close the storage.
     }
 
     // Set timezone
-    setenv("TZ", timezones[321].posix, 1);
-    tzset();
-    timezoneOffset = -_timezone;
-    if (_daylight) {
-        timezoneOffset += 3600;
-    }
-
-    if (enabledSync) {
-        updateTime(); // Update time when plugin is loaded.
-    }
+    timezoneChanged(nullptr, i);
 }
 
 static void syncingEnabled(ConfigItemBoolean *item, bool value)
@@ -226,12 +241,6 @@ static void syncingEnabled(ConfigItemBoolean *item, bool value)
     // If false, bro is literally a time traveler!
     WUPS_StoreBool(nullptr, SYNCING_ENABLED_CONFIG_ID, value);
     enabledSync = value;
-}
-
-static void savingsEnabled(ConfigItemBoolean *item, bool value)
-{
-    WUPS_StoreBool(nullptr, DST_ENABLED_CONFIG_ID, value);
-    enabledDST = value;
 }
 
 static void notifyEnabled(ConfigItemBoolean *item, bool value)
@@ -281,17 +290,13 @@ WUPS_GET_CONFIG() {
     WUPSConfig_AddCategoryByNameHandled(settings, "Preview Time", &preview);
 
     WUPSConfigItemBoolean_AddToCategoryHandled(settings, config, "enabledSync", "Syncing Enabled", enabledSync, &syncingEnabled);
-    WUPSConfigItemBoolean_AddToCategoryHandled(settings, config, "enabledDST", "Daylight Savings", enabledDST, &savingsEnabled);
+    WUPSConfigItemMultipleValues_AddToCategoryHandled(settings, config, TIMEZONE_CONFIG_ID, "Timezone", 0, timezonesReadable, sizeof(timezonesReadable) / sizeof(timezonesReadable[0]), &timezoneChanged);
     WUPSConfigItemBoolean_AddToCategoryHandled(settings, config, "enabledNotify", "Receive Notifications", enabledNotify, &notifyEnabled);
 
     sysTimeHandle = WUPSConfigItemTime_AddToCategoryHandled(settings, preview, "sysTime", "Current SYS Time: Loading...");
     ntpTimeHandle = WUPSConfigItemTime_AddToCategoryHandled(settings, preview, "ntpTime", "Current NTP Time: Loading...");
     settingsThreadActive = true;
     settingsThread = new std::thread(settingsThreadMain);
-
-    char timeString[256];
-    snprintf(timeString, 255, "Timezone: %s%dsecs (%s / %s)", timezoneOffset < 0 ? "" : "+", timezoneOffset, _tzname[0], _tzname[1]);
-    WUPSConfigItemTime_AddToCategoryHandled(settings, preview, "TZ", timeString);
 
     return settings;
 }
