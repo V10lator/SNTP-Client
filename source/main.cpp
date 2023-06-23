@@ -42,11 +42,11 @@ WUPS_PLUGIN_LICENSE("MIT");
 WUPS_USE_WUT_DEVOPTAB();
 WUPS_USE_STORAGE("Wii U Time Sync");
 
-bool enabledSync = false;
-bool enabledDST = false;
-bool enabledNotify = true;
-int offsetHours = 0;
-int offsetMinutes = 0;
+static bool enabledSync = false;
+static bool enabledDST = false;
+static bool enabledNotify = true;
+static int offsetHours = 0;
+static int offsetMinutes = 0;
 
 // From https://github.com/lettier/ntpclient/blob/master/source/c/main.c
 typedef struct
@@ -81,7 +81,7 @@ typedef struct
 extern "C" int32_t CCRSysSetSystemTime(OSTime time);
 extern "C" BOOL __OSSetAbsoluteSystemTime(OSTime time);
 
-bool SetSystemTime(OSTime time)
+static bool SetSystemTime(OSTime time)
 {
     nn::pdm::NotifySetTimeBeginEvent();
 
@@ -97,7 +97,7 @@ bool SetSystemTime(OSTime time)
     return res != FALSE;
 }
 
-OSTime NTPGetTime(const char* hostname)
+static OSTime NTPGetTime(const char* hostname)
 {
     OSTime tick = 0;
 
@@ -151,7 +151,7 @@ OSTime NTPGetTime(const char* hostname)
     return tick;
 }
 
-void updateTime() {
+static void updateTime() {
     OSTime time = NTPGetTime("fritz.box"); // Connect to the time server.
 
     if (time == 0) {
@@ -217,32 +217,32 @@ INITIALIZE_PLUGIN() {
     }
 }
 
-void syncingEnabled(ConfigItemBoolean *item, bool value)
+static void syncingEnabled(ConfigItemBoolean *item, bool value)
 {
     // If false, bro is literally a time traveler!
     WUPS_StoreBool(nullptr, SYNCING_ENABLED_CONFIG_ID, value);
     enabledSync = value;
 }
 
-void savingsEnabled(ConfigItemBoolean *item, bool value)
+static void savingsEnabled(ConfigItemBoolean *item, bool value)
 {
     WUPS_StoreBool(nullptr, DST_ENABLED_CONFIG_ID, value);
     enabledDST = value;
 }
 
-void notifyEnabled(ConfigItemBoolean *item, bool value)
+static void notifyEnabled(ConfigItemBoolean *item, bool value)
 {
     WUPS_StoreBool(nullptr, NOTIFY_ENABLED_CONFIG_ID, value);
     enabledNotify = value;
 }
 
-void onHourOffsetChanged(ConfigItemIntegerRange *item, int32_t offset)
+static void onHourOffsetChanged(ConfigItemIntegerRange *item, int32_t offset)
 {
     WUPS_StoreInt(nullptr, OFFSET_HOURS_CONFIG_ID, offset);
     offsetHours = offset;
 }
 
-void onMinuteOffsetChanged(ConfigItemIntegerRange *item, int32_t offset)
+static void onMinuteOffsetChanged(ConfigItemIntegerRange *item, int32_t offset)
 {
     WUPS_StoreInt(nullptr, OFFSET_MINUTES_CONFIG_ID, offset);
     offsetMinutes = offset;
