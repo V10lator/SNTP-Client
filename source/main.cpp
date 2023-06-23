@@ -33,6 +33,8 @@
 // Seconds between 1900 (NTP epoch) and 2000 (Wii U epoch)
 #define NTP_TIMESTAMP_DELTA 3155673600llu
 
+#define LI_UNSYNC 0xc0
+
 // Important plugin information.
 WUPS_PLUGIN_NAME("Wii U Time Sync");
 WUPS_PLUGIN_DESCRIPTION("A plugin that synchronizes a Wii U's clock to the Internet.");
@@ -131,16 +133,22 @@ static OSTime NTPGetTime(const char* hostname)
                 if (write(sockfd, &packet, sizeof(packet)) == sizeof(packet)) {
                     // Wait and receive the packet back from the server. If n == -1, it failed.
                     if (read(sockfd, &packet, sizeof(packet)) == sizeof(packet)) {
-                        // These two fields contain the time-stamp seconds as the packet left the NTP server.
-                        // The number of seconds correspond to the seconds passed since 1900.
-                        // ntohl() converts the bit/byte order from the network's to host's "endianness".
-                        packet.txTm_s = ntohl(packet.txTm_s); // Time-stamp seconds.
-                        packet.txTm_f = ntohl(packet.txTm_f); // Time-stamp fraction of a second.
+                        // Basic validity check:
+                        // li != 11
+                        // stratum != 0
+                        // transmit timestamp != 0
+                        if ((packet.li_vn_mode & LI_UNSYNC) != LI_UNSYNC && packet.stratum != 0 && (packet.txTm_s | packet.txTm_f)) {
+                            // These two fields contain the time-stamp seconds as the packet left the NTP server.
+                            // The number of seconds correspond to the seconds passed since 1900.
+                            // ntohl() converts the bit/byte order from the network's to host's "endianness".
+                            packet.txTm_s = ntohl(packet.txTm_s); // Time-stamp seconds.
+                            packet.txTm_f = ntohl(packet.txTm_f); // Time-stamp fraction of a second.
 
-                        // Convert seconds to ticks and adjust timestamp
-                        tick += OSSecondsToTicks(packet.txTm_s - NTP_TIMESTAMP_DELTA);
-                        // Convert fraction to ticks
-                        tick += OSNanosecondsToTicks((packet.txTm_f * 1000000000llu) >> 32);
+                            // Convert seconds to ticks and adjust timestamp
+                            tick += OSSecondsToTicks(packet.txTm_s - NTP_TIMESTAMP_DELTA);
+                            // Convert fraction to ticks
+                            tick += OSNanosecondsToTicks((packet.txTm_f * 1000000000llu) >> 32);
+                        }
                     }
                 }
 
