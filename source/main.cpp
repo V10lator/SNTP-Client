@@ -152,7 +152,7 @@ OSTime NTPGetTime(const char* hostname)
 }
 
 void updateTime() {
-    OSTime time = NTPGetTime("time.windows.com"); // Connect to the time server.
+    OSTime time = NTPGetTime("fritz.box"); // Connect to the time server.
 
     if (time == 0) {
         return; // Probably didn't connect correctly.
