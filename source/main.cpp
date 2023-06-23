@@ -21,6 +21,7 @@
 #include <wups/config/WUPSConfigItemIntegerRange.h>
 
 #include "ConfigItemTime.h"
+#include <timezone.h>
 
 #include <cstdlib>
 #include <cstdio>
@@ -30,8 +31,6 @@
 #define SYNCING_ENABLED_CONFIG_ID "enabledSync"
 #define DST_ENABLED_CONFIG_ID "enabledDST"
 #define NOTIFY_ENABLED_CONFIG_ID "enabledNotify"
-#define OFFSET_HOURS_CONFIG_ID "offsetHours"
-#define OFFSET_MINUTES_CONFIG_ID "offsetMinutes"
 // Seconds between 1900 (NTP epoch) and 2000 (Wii U epoch)
 #define NTP_TIMESTAMP_DELTA 3155673600llu
 
@@ -54,13 +53,12 @@ WUPS_USE_STORAGE("Wii U Time Sync");
 static bool enabledSync = false;
 static bool enabledDST = false;
 static bool enabledNotify = true;
-static int offsetHours = 0;
-static int offsetMinutes = 0;
 
 static ConfigItemTime *sysTimeHandle;
 static ConfigItemTime *ntpTimeHandle;
 static std::thread *settingsThread;
 static volatile bool settingsThreadActive;
+static int32_t timezoneOffset;
 
 // From https://github.com/lettier/ntpclient/blob/master/source/c/main.c
 typedef struct
@@ -155,23 +153,13 @@ static OSTime NTPGetTime(const char* hostname)
                             packet.txTm_s = ntohl(packet.txTm_s); // Time-stamp seconds.
                             packet.txTm_f = ntohl(packet.txTm_f); // Time-stamp fraction of a second.
 
+                            // Convert timezone
+                            packet.txTm_s += timezoneOffset;
+
                             // Convert seconds to ticks and adjust timestamp
                             tick += OSSecondsToTicks(packet.txTm_s - NTP_TIMESTAMP_DELTA);
                             // Convert fraction to ticks
                             tick += OSNanosecondsToTicks((packet.txTm_f * 1000000000llu) >> 32);
-
-                            // Add offsets
-                            if (offsetHours < 0) {
-                                tick -= OSSecondsToTicks(abs(offsetHours) * 60 * 60);
-                            } else {
-                                tick += OSSecondsToTicks(offsetHours * 60 * 60);
-                            }
-
-                            if (enabledDST) {
-                                tick += OSSecondsToTicks(60 * 60); // DST adds an hour.
-                            }
-
-                            tick += OSSecondsToTicks(offsetMinutes * 60);
                         }
                     }
                 }
@@ -216,16 +204,16 @@ INITIALIZE_PLUGIN() {
             WUPS_StoreBool(nullptr, NOTIFY_ENABLED_CONFIG_ID, enabledNotify);
         }
 
-        if ((storageRes = WUPS_GetInt(nullptr, OFFSET_HOURS_CONFIG_ID, &offsetHours)) == WUPS_STORAGE_ERROR_NOT_FOUND) {
-            WUPS_StoreInt(nullptr, OFFSET_HOURS_CONFIG_ID, offsetHours);
-        }
-
-        if ((storageRes = WUPS_GetInt(nullptr, OFFSET_MINUTES_CONFIG_ID, &offsetMinutes)) == WUPS_STORAGE_ERROR_NOT_FOUND) {
-            WUPS_StoreInt(nullptr, OFFSET_MINUTES_CONFIG_ID, offsetMinutes);
-        }
-
         NotificationModule_InitLibrary(); // Set up for notifications.
         WUPS_CloseStorage(); // Close the storage.
+    }
+
+    // Set timezone
+    setenv("TZ", timezones[321].posix, 1);
+    tzset();
+    timezoneOffset = -_timezone;
+    if (_daylight) {
+        timezoneOffset += 3600;
     }
 
     if (enabledSync) {
@@ -250,18 +238,6 @@ static void notifyEnabled(ConfigItemBoolean *item, bool value)
 {
     WUPS_StoreBool(nullptr, NOTIFY_ENABLED_CONFIG_ID, value);
     enabledNotify = value;
-}
-
-static void onHourOffsetChanged(ConfigItemIntegerRange *item, int32_t offset)
-{
-    WUPS_StoreInt(nullptr, OFFSET_HOURS_CONFIG_ID, offset);
-    offsetHours = offset;
-}
-
-static void onMinuteOffsetChanged(ConfigItemIntegerRange *item, int32_t offset)
-{
-    WUPS_StoreInt(nullptr, OFFSET_MINUTES_CONFIG_ID, offset);
-    offsetMinutes = offset;
 }
 
 static void setTimeInSettings() {
@@ -307,13 +283,15 @@ WUPS_GET_CONFIG() {
     WUPSConfigItemBoolean_AddToCategoryHandled(settings, config, "enabledSync", "Syncing Enabled", enabledSync, &syncingEnabled);
     WUPSConfigItemBoolean_AddToCategoryHandled(settings, config, "enabledDST", "Daylight Savings", enabledDST, &savingsEnabled);
     WUPSConfigItemBoolean_AddToCategoryHandled(settings, config, "enabledNotify", "Receive Notifications", enabledNotify, &notifyEnabled);
-    WUPSConfigItemIntegerRange_AddToCategoryHandled(settings, config, "offsetHours", "Time Offset (hours)", offsetHours, -12, 14, &onHourOffsetChanged);
-    WUPSConfigItemIntegerRange_AddToCategoryHandled(settings, config, "offsetMinutes", "Time Offset (minutes)", offsetMinutes, 0, 59, &onMinuteOffsetChanged);
 
     sysTimeHandle = WUPSConfigItemTime_AddToCategoryHandled(settings, preview, "sysTime", "Current SYS Time: Loading...");
     ntpTimeHandle = WUPSConfigItemTime_AddToCategoryHandled(settings, preview, "ntpTime", "Current NTP Time: Loading...");
     settingsThreadActive = true;
     settingsThread = new std::thread(settingsThreadMain);
+
+    char timeString[256];
+    snprintf(timeString, 255, "Timezone: %s%dsecs (%s / %s)", timezoneOffset < 0 ? "" : "+", timezoneOffset, _tzname[0], _tzname[1]);
+    WUPSConfigItemTime_AddToCategoryHandled(settings, preview, "TZ", timeString);
 
     return settings;
 }
