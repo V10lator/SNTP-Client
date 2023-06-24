@@ -31,7 +31,6 @@
 #include <thread>
 
 #define SYNCING_ENABLED_CONFIG_ID "enabledSync"
-#define DST_ENABLED_CONFIG_ID "enabledDST"
 #define NOTIFY_ENABLED_CONFIG_ID "enabledNotify"
 #define TIMEZONE_CONFIG_ID "timezone"
 // Seconds between 1900 (NTP epoch) and 2000 (Wii U epoch)
@@ -55,7 +54,6 @@ WUPS_USE_WUT_DEVOPTAB();
 WUPS_USE_STORAGE("Wii U Time Sync");
 
 static bool enabledSync = false;
-static bool enabledDST = false;
 static bool enabledNotify = true;
 
 static ConfigItemTime *sysTimeHandle;
@@ -214,10 +212,6 @@ INITIALIZE_PLUGIN() {
     if (storageRes == WUPS_STORAGE_ERROR_SUCCESS) {
         if ((storageRes = WUPS_GetBool(nullptr, SYNCING_ENABLED_CONFIG_ID, &enabledSync)) == WUPS_STORAGE_ERROR_NOT_FOUND) {
             WUPS_StoreBool(nullptr, SYNCING_ENABLED_CONFIG_ID, enabledSync);
-        }
-
-        if ((storageRes = WUPS_GetBool(nullptr, DST_ENABLED_CONFIG_ID, &enabledDST)) == WUPS_STORAGE_ERROR_NOT_FOUND) {
-            WUPS_StoreBool(nullptr, DST_ENABLED_CONFIG_ID, enabledDST);
         }
 
         if ((storageRes = WUPS_GetBool(nullptr, NOTIFY_ENABLED_CONFIG_ID, &enabledNotify)) == WUPS_STORAGE_ERROR_NOT_FOUND) {
