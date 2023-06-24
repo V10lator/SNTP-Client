@@ -23,7 +23,7 @@
 #include <wups/config/WUPSConfigItemIntegerRange.h>
 
 #include "ConfigItemTime.h"
-#include "timezone.h"
+#include "timezones.h"
 
 #include <cstdlib>
 #include <cstdio>
