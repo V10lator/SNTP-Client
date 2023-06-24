@@ -39,7 +39,7 @@
 #define DEFAULT_TIMEZONE 321
 
 #define LI_UNSYNC 0xc0
-#define NTP_SERVER "fritz.box"
+#define NTP_SERVER "pool.ntp.org"
 #define MODE_MASK 0x07
 #define MODE_CLIENT 0x03
 #define MODE_SERVER 0x04
