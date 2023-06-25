@@ -191,6 +191,7 @@ static void updateTime() {
 }
 
 static void timezoneChanged(ConfigItemMultipleValues *item, uint32_t index) {
+    (void)item;
     setenv("TZ", timezonesPOSIX[index].valueName, 1);
     tzset();
     timezoneOffset = -_timezone;
@@ -232,6 +233,7 @@ INITIALIZE_PLUGIN() {
 
 static void syncingEnabled(ConfigItemBoolean *item, bool value)
 {
+    (void)item;
     // If false, bro is literally a time traveler!
     WUPS_StoreBool(nullptr, SYNCING_ENABLED_CONFIG_ID, value);
     enabledSync = value;
@@ -239,6 +241,7 @@ static void syncingEnabled(ConfigItemBoolean *item, bool value)
 
 static void notifyEnabled(ConfigItemBoolean *item, bool value)
 {
+    (void)item;
     WUPS_StoreBool(nullptr, NOTIFY_ENABLED_CONFIG_ID, value);
     enabledNotify = value;
 }
