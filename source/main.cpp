@@ -12,6 +12,7 @@
 #include <coreinit/ios.h>
 #include <coreinit/mcp.h>
 #include <coreinit/time.h>
+#include <coreinit/thread.h>
 #include <nn/pdm.h>
 #include <notifications/notifications.h>
 #include <whb/proc.h>
@@ -31,7 +32,6 @@
 #include <thread>
 
 #define SYNCING_ENABLED_CONFIG_ID "enabledSync"
-#define NOTIFY_ENABLED_CONFIG_ID "enabledNotify"
 #define TIMEZONE_CONFIG_ID "timezone"
 // Seconds between 1900 (NTP epoch) and 2000 (Wii U epoch)
 #define NTP_TIMESTAMP_DELTA 3155673600llu
@@ -44,22 +44,24 @@
 #define MODE_SERVER 0x04
 
 // Important plugin information.
-WUPS_PLUGIN_NAME("Wii U Time Sync");
-WUPS_PLUGIN_DESCRIPTION("A plugin that synchronizes a Wii U's clock to the Internet.");
+WUPS_PLUGIN_NAME("SNTP Client");
+WUPS_PLUGIN_DESCRIPTION("A plugin that synchronizes a Wii U's clock with SNTP.");
 WUPS_PLUGIN_VERSION("v1.1.0");
-WUPS_PLUGIN_AUTHOR("Nightkingale");
+WUPS_PLUGIN_AUTHOR("Nightkingale & V10lator");
 WUPS_PLUGIN_LICENSE("MIT");
 
 WUPS_USE_WUT_DEVOPTAB();
-WUPS_USE_STORAGE("Wii U Time Sync");
+WUPS_USE_STORAGE("SNTP Client");
 
 static bool enabledSync = false;
-static bool enabledNotify = true;
 
 static ConfigItemTime *sysTimeHandle;
 static ConfigItemTime *ntpTimeHandle;
-static std::thread *settingsThread;
+static std::thread *settingsThread = nullptr;
+static std::thread *notifThread = nullptr;
 static volatile bool settingsThreadActive;
+static volatile bool notifThreadActive = false;
+static int32_t timezone;
 static int32_t timezoneOffset;
 
 // From https://github.com/lettier/ntpclient/blob/master/source/c/main.c
@@ -93,30 +95,52 @@ typedef struct
 } ntp_packet;              // Total: 384 bits or 48 bytes.
 
 extern "C" int32_t CCRSysSetSystemTime(OSTime time);
-extern "C" BOOL __OSSetAbsoluteSystemTime(OSTime time);
+extern "C" bool __OSSetAbsoluteSystemTime(OSTime time);
 
-static bool SetSystemTime(OSTime time)
+void notifMain(const char *notif, bool error)
 {
-    nn::pdm::NotifySetTimeBeginEvent();
+    bool ready = false;
+    while(notifThreadActive && NotificationModule_IsOverlayReady(&ready) == NOTIFICATION_MODULE_RESULT_SUCCESS && !ready)
+        OSSleepTicks(OSMillisecondsToTicks(100));
 
-    if (CCRSysSetSystemTime(time) != 0) {
-        nn::pdm::NotifySetTimeEndEvent();
-        return false;
+    if(ready) {
+        if(error)
+            NotificationModule_AddErrorNotification(notif);
+        else
+            NotificationModule_AddInfoNotification(notif);
     }
 
-    BOOL res = __OSSetAbsoluteSystemTime(time);
-
-    nn::pdm::NotifySetTimeEndEvent();
-
-    return res != FALSE;
+    notifThreadActive = false;
 }
 
-static OSTime NTPGetTime(const char* hostname)
+void showNotification(const char *notif, bool error)
+{
+    if(notifThreadActive)
+        return; // TODO
+
+    notifThreadActive = true;
+    notifThread = new std::thread(notifMain, notif, error);
+}
+
+static inline bool SetSystemTime(OSTime time)
+{
+    bool res = false;
+    nn::pdm::NotifySetTimeBeginEvent();
+
+    if (CCRSysSetSystemTime(time) == 0) {
+        res = __OSSetAbsoluteSystemTime(time);
+    }
+
+    nn::pdm::NotifySetTimeEndEvent();
+    return res;
+}
+
+static OSTime NTPGetTime()
 {
     OSTime tick = 0;
 
     // Get host address by name
-    struct hostent* server = gethostbyname(hostname);
+    struct hostent* server = gethostbyname(NTP_SERVER);
     if (server) {
         // Create a socket
         int sockfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
@@ -175,7 +199,13 @@ static OSTime NTPGetTime(const char* hostname)
 }
 
 static void updateTime() {
-    OSTime time = NTPGetTime(NTP_SERVER); // Connect to the time server.
+    OSTime time = NTPGetTime(); // Connect to the time server.
+    if(time == 0)
+    {
+        showNotification("Error getting time from " NTP_SERVER "!", true);
+        return;
+    }
+
     OSTime currentTime = OSGetTime();
     int timeDifference = abs(time - currentTime);
 
@@ -183,52 +213,10 @@ static void updateTime() {
         return; // Time difference is within 250 milliseconds, no need to update.
     }
 
-    SetSystemTime(time); // This finally sets the console time.
-
-    if (enabledNotify) {
-        NotificationModule_AddInfoNotification("The time has been changed based on your Internet connection.");
-    }
-}
-
-static void timezoneChanged(ConfigItemMultipleValues *item, uint32_t index) {
-    (void)item;
-    setenv("TZ", timezonesPOSIX[index].valueName, 1);
-    tzset();
-    timezoneOffset = -_timezone;
-    if (_daylight) {
-        timezoneOffset += 3600;
-    }
-
-    WUPS_StoreInt(nullptr, TIMEZONE_CONFIG_ID, index);
-
-    if (enabledSync) {
-        updateTime();
-    }
-}
-
-INITIALIZE_PLUGIN() {
-    WUPSStorageError storageRes = WUPS_OpenStorage();
-    int32_t i = 0;
-    // Check if the plugin's settings have been saved before.
-    if (storageRes == WUPS_STORAGE_ERROR_SUCCESS) {
-        if ((storageRes = WUPS_GetBool(nullptr, SYNCING_ENABLED_CONFIG_ID, &enabledSync)) == WUPS_STORAGE_ERROR_NOT_FOUND) {
-            WUPS_StoreBool(nullptr, SYNCING_ENABLED_CONFIG_ID, enabledSync);
-        }
-
-        if ((storageRes = WUPS_GetBool(nullptr, NOTIFY_ENABLED_CONFIG_ID, &enabledNotify)) == WUPS_STORAGE_ERROR_NOT_FOUND) {
-            WUPS_StoreBool(nullptr, NOTIFY_ENABLED_CONFIG_ID, enabledNotify);
-        }
-
-        if ((storageRes = WUPS_GetInt(nullptr, TIMEZONE_CONFIG_ID, &i)) == WUPS_STORAGE_ERROR_NOT_FOUND) {
-            i = DEFAULT_TIMEZONE;
-        }
-
-        NotificationModule_InitLibrary(); // Set up for notifications.
-        WUPS_CloseStorage(); // Close the storage.
-    }
-
-    // Set timezone
-    timezoneChanged(nullptr, i);
+    if(SetSystemTime(time))
+        showNotification("Time synced", false);
+    else
+        showNotification("Error setting hardware clock!", true);
 }
 
 static void syncingEnabled(ConfigItemBoolean *item, bool value)
@@ -239,37 +227,100 @@ static void syncingEnabled(ConfigItemBoolean *item, bool value)
     enabledSync = value;
 }
 
-static void notifyEnabled(ConfigItemBoolean *item, bool value)
+static void changeTimezone(ConfigItemMultipleValues *item, uint32_t value)
 {
     (void)item;
-    WUPS_StoreBool(nullptr, NOTIFY_ENABLED_CONFIG_ID, value);
-    enabledNotify = value;
+
+    setenv("TZ", timezonesPOSIX[value].valueName, 1);
+    tzset();
+    timezoneOffset = -_timezone;
+    if (_daylight) {
+        timezoneOffset += 3600;
+    }
+
+    timezone = value;
 }
 
-static void setTimeInSettings() {
+INITIALIZE_PLUGIN() {
+    NotificationModule_InitLibrary();
+    WUPSStorageError storageRes = WUPS_OpenStorage();
+    // Check if the plugin's settings have been saved before.
+    if (storageRes == WUPS_STORAGE_ERROR_SUCCESS) {
+        if ((storageRes = WUPS_GetBool(nullptr, SYNCING_ENABLED_CONFIG_ID, &enabledSync)) == WUPS_STORAGE_ERROR_NOT_FOUND) {
+            WUPS_StoreBool(nullptr, SYNCING_ENABLED_CONFIG_ID, enabledSync);
+        }
+
+        if ((storageRes = WUPS_GetInt(nullptr, TIMEZONE_CONFIG_ID, &timezone)) == WUPS_STORAGE_ERROR_NOT_FOUND) {
+            WUPS_StoreBool(nullptr, TIMEZONE_CONFIG_ID, timezone);
+        }
+
+        WUPS_CloseStorage(); // Close the storage.
+    }
+    else
+        showNotification("SNTP Client: Config error!", true);
+
+    changeTimezone(nullptr, timezone);
+    NotificationModule_DeInitLibrary();
+}
+
+ON_APPLICATION_START() {
+    NotificationModule_InitLibrary();
+    if(enabledSync)
+        updateTime();
+}
+
+ON_APPLICATION_ENDS() {
+    if(notifThreadActive)
+        notifThreadActive = false;
+
+    notifThread->join();
+    delete notifThread;
+    notifThread = nullptr;
+
+    NotificationModule_DeInitLibrary();
+}
+
+static void setTimeInSettings(OSTime *ntpTime, OSTime *localTime, bool sync) {
     OSCalendarTime ct;
-    OSTime ot;
     char timeString[256];
 
-    ot = NTPGetTime(NTP_SERVER);
-    if (ot == 0) {
+    if(sync)
+        *ntpTime = NTPGetTime();
+
+    if (*ntpTime == 0) {
         WUPSConfigItem_SetDisplayName(ntpTimeHandle->handle, "Current NTP Time: N/A");
     } else {
-        OSTicksToCalendarTime(ot, &ct);
+        OSTicksToCalendarTime(*ntpTime, &ct);
         snprintf(timeString, 255, "Current NTP Time: %04d-%02d-%02d %02d:%02d:%02d:%04d:%04d\n", ct.tm_year, ct.tm_mon + 1, ct.tm_mday, ct.tm_hour, ct.tm_min, ct.tm_sec, ct.tm_msec, ct.tm_usec);
         WUPSConfigItem_SetDisplayName(ntpTimeHandle->handle, timeString);
     }
 
-    ot = OSGetTime();
-    OSTicksToCalendarTime(ot, &ct);
+    if(sync)
+        *localTime = OSGetTime();
+
+    OSTicksToCalendarTime(*localTime, &ct);
     snprintf(timeString, 255, "Current SYS Time: %04d-%02d-%02d %02d:%02d:%02d:%04d:%04d\n", ct.tm_year, ct.tm_mon + 1, ct.tm_mday, ct.tm_hour, ct.tm_min, ct.tm_sec, ct.tm_msec, ct.tm_usec);
     WUPSConfigItem_SetDisplayName(sysTimeHandle->handle, timeString);
+
+    //TODO: Update screen without the user needing to press a button
 }
 
 static void settingsThreadMain() {
+    OSTime ntpTime;
+    OSTime localTime;
+    int i = 0;
+    bool sync;
+
+    setTimeInSettings(&ntpTime, &localTime, true);
     while(settingsThreadActive) {
-        setTimeInSettings();
-        sleep(1);
+        OSSleepTicks(OSSecondsToTicks(1));
+
+        ntpTime += OSSecondsToTicks(1);
+        localTime += OSSecondsToTicks(1);
+        sync = ++i == 30;
+        setTimeInSettings(&ntpTime, &localTime, sync);
+        if(sync)
+            i = 0;
     }
 }
 
@@ -287,8 +338,7 @@ WUPS_GET_CONFIG() {
     WUPSConfig_AddCategoryByNameHandled(settings, "Preview Time", &preview);
 
     WUPSConfigItemBoolean_AddToCategoryHandled(settings, config, "enabledSync", "Syncing Enabled", enabledSync, &syncingEnabled);
-    WUPSConfigItemMultipleValues_AddToCategoryHandled(settings, config, TIMEZONE_CONFIG_ID, "Timezone", 0, timezonesReadable, sizeof(timezonesReadable) / sizeof(timezonesReadable[0]), &timezoneChanged);
-    WUPSConfigItemBoolean_AddToCategoryHandled(settings, config, "enabledNotify", "Receive Notifications", enabledNotify, &notifyEnabled);
+    WUPSConfigItemMultipleValues_AddToCategoryHandled(settings, config, TIMEZONE_CONFIG_ID, "Timezone", timezone, timezonesReadable, sizeof(timezonesReadable) / sizeof(timezonesReadable[0]), &changeTimezone);
 
     sysTimeHandle = WUPSConfigItemTime_AddToCategoryHandled(settings, preview, "sysTime", "Current SYS Time: Loading...");
     ntpTimeHandle = WUPSConfigItemTime_AddToCategoryHandled(settings, preview, "ntpTime", "Current NTP Time: Loading...");
@@ -307,5 +357,6 @@ WUPS_CONFIG_CLOSED() {
     settingsThreadActive = false;
     settingsThread->join();
     delete settingsThread;
+    settingsThread = nullptr;
     WUPS_CloseStorage(); // Save all changes.
 }
