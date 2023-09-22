@@ -271,12 +271,12 @@ ON_APPLICATION_START() {
 
 ON_APPLICATION_ENDS() {
     if(notifThreadActive)
+    {
         notifThreadActive = false;
-
-    notifThread->join();
-    delete notifThread;
-    notifThread = nullptr;
-
+        notifThread->join();
+        delete notifThread;
+        notifThread = nullptr;
+    }
     NotificationModule_DeInitLibrary();
 }
 
