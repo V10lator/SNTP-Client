@@ -52,7 +52,7 @@
 // Important plugin information.
 WUPS_PLUGIN_NAME("SNTP Client");
 WUPS_PLUGIN_DESCRIPTION("A plugin that synchronizes a Wii U's clock with SNTP.");
-WUPS_PLUGIN_VERSION("v1.2");
+WUPS_PLUGIN_VERSION("v1.3");
 WUPS_PLUGIN_AUTHOR("Nightkingale & V10lator");
 WUPS_PLUGIN_LICENSE("MIT");
 
@@ -257,7 +257,7 @@ static void timeThreadMain()
     {
         OSReceiveMessage(&timeQueue, &msg, OS_MESSAGE_FLAGS_BLOCKING);
         if(msg.message == MSG_EXIT)
-            break;
+            return;
 
         time = NTPGetTime(); // Connect to the time server.
         tmpTime = OSGetTime();
