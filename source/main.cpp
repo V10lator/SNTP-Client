@@ -440,7 +440,7 @@ WUPS_GET_CONFIG() {
     sysTimeHandle = WUPSConfigItemTime_AddToCategoryHandled(settings, preview, "sysTime", "Current SYS Time: Loading...");
     ntpTimeHandle = WUPSConfigItemTime_AddToCategoryHandled(settings, preview, "ntpTime", "Current NTP Time: Loading...");
     settingsThreadActive = true;
-    settingsThread = startThread("SNTP Client Settings Thread", settingsThreadMain, OS_THREAD_ATTRIB_AFFINITY_CPU0);
+    settingsThread = startThread("SNTP Client Settings Thread", settingsThreadMain, OS_THREAD_ATTRIB_AFFINITY_CPU1);
 
     return settings;
 }
