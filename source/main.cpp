@@ -153,7 +153,7 @@ static inline void showNotification(const char *notif, bool error)
 {
     OSMessage msg;
     msg.message = MEMAllocFromDefaultHeap(sizeof(NOTIFICATION));
-    if(msg.message == NULL)
+    if(msg.message == nullptr)
         return;
 
     static_cast<NOTIFICATION *>(msg.message)->error = error;
@@ -313,7 +313,7 @@ static void saveTimezone(ConfigItemMultipleValues *item, uint32_t value)
 static OSThread *startThread(const char *name, OSThreadEntryPointFn mainfunc, OSThreadAttributes attribs)
 {
     OSThread *ost = static_cast<OSThread *>(MEMAllocFromDefaultHeapEx(sizeof(OSThread) + 0x1000, 8));
-    if(ost != NULL)
+    if(ost != nullptr)
     {
         if(OSCreateThread(ost, mainfunc, 0, nullptr, reinterpret_cast<uint8_t *>(ost) + (0x1000 + sizeof(OSThread)), 0x1000, 5, attribs))
         {
@@ -325,7 +325,7 @@ static OSThread *startThread(const char *name, OSThreadEntryPointFn mainfunc, OS
         MEMFreeToDefaultHeap(ost);
     }
 
-    return NULL;
+    return nullptr;
 }
 
 static inline void stopThread(OSThread *thread)
