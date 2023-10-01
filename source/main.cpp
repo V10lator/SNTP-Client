@@ -68,7 +68,7 @@ static std::thread *notifThread = nullptr;
 static std::thread *settingsThread = nullptr;
 static volatile bool settingsThreadActive;
 static int32_t timezone;
-static int32_t timezoneOffset;
+static volatile int32_t timezoneOffset;
 
 static OSMessageQueue timeQueue;
 static OSMessageQueue notifQueue;
@@ -132,16 +132,16 @@ static void notifMain()
         while(i++ < 100 * 5 && NotificationModule_IsOverlayReady(&ready) == NOTIFICATION_MODULE_RESULT_SUCCESS && !ready)
             OSSleepTicks(OSMillisecondsToTicks(100));
 
-        notif = static_cast<NOTIFICATION *>(msg.message);
         if(ready)
         {
+            notif = static_cast<NOTIFICATION *>(msg.message);
             if(notif->error)
                 NotificationModule_AddErrorNotification(notif->msg);
             else
                 NotificationModule_AddInfoNotification(notif->msg);
         }
 
-        MEMFreeToDefaultHeap(notif);
+        MEMFreeToDefaultHeap(msg.message);
     } while(1);
 
     NotificationModule_DeInitLibrary();
@@ -149,17 +149,16 @@ static void notifMain()
 
 static inline void showNotification(const char *notif, bool error)
 {
-    NOTIFICATION *n = static_cast<NOTIFICATION *>(MEMAllocFromDefaultHeap(sizeof(NOTIFICATION)));
-    if(n == NULL)
+    OSMessage msg;
+    msg.message = MEMAllocFromDefaultHeap(sizeof(NOTIFICATION));
+    if(msg.message == NULL)
         return;
 
-    n->error = error;
-    n->msg = notif;
+    static_cast<NOTIFICATION *>(msg.message)->error = error;
+    static_cast<NOTIFICATION *>(msg.message)->msg = notif;
 
-    OSMessage msg;
-    msg.message = n;
     if(!OSSendMessage(&notifQueue, &msg, OS_MESSAGE_FLAGS_NONE))
-        MEMFreeToDefaultHeap(n);
+        MEMFreeToDefaultHeap(msg.message);
 }
 
 static inline bool SetSystemTime(OSTime time)
@@ -167,9 +166,8 @@ static inline bool SetSystemTime(OSTime time)
     bool res = false;
     nn::pdm::NotifySetTimeBeginEvent();
 
-    if (CCRSysSetSystemTime(time) == 0) {
+    if(CCRSysSetSystemTime(time) == 0)
         res = __OSSetAbsoluteSystemTime(time);
-    }
 
     nn::pdm::NotifySetTimeEndEvent();
     return res;
@@ -269,9 +267,8 @@ static void timeThreadMain()
 
         tmpTime = static_cast<OSTime>(abs(time - tmpTime));
 
-        if (tmpTime <= static_cast<OSTime>(OSMillisecondsToTicks(250))) {
+        if(tmpTime <= static_cast<OSTime>(OSMillisecondsToTicks(250)))
             continue; // Time difference is within 250 milliseconds, no need to update.
-        }
 
         if(SetSystemTime(time))
             showNotification("Time synced", false);
@@ -295,9 +292,8 @@ static void changeTimezone(ConfigItemMultipleValues *item, uint32_t value)
     setenv("TZ", timezonesPOSIX[value].valueName, 1);
     tzset();
     timezoneOffset = -_timezone;
-    if (_daylight) {
+    if(_daylight)
         timezoneOffset += 3600;
-    }
 
     timezone = value;
 }
@@ -318,14 +314,12 @@ INITIALIZE_PLUGIN() {
 
     WUPSStorageError storageRes = WUPS_OpenStorage();
     // Check if the plugin's settings have been saved before.
-    if (storageRes == WUPS_STORAGE_ERROR_SUCCESS) {
-        if ((storageRes = WUPS_GetBool(nullptr, SYNCING_ENABLED_CONFIG_ID, &enabledSync)) == WUPS_STORAGE_ERROR_NOT_FOUND) {
+    if(storageRes == WUPS_STORAGE_ERROR_SUCCESS) {
+        if((storageRes = WUPS_GetBool(nullptr, SYNCING_ENABLED_CONFIG_ID, &enabledSync)) == WUPS_STORAGE_ERROR_NOT_FOUND)
             WUPS_StoreBool(nullptr, SYNCING_ENABLED_CONFIG_ID, enabledSync);
-        }
 
-        if ((storageRes = WUPS_GetInt(nullptr, TIMEZONE_CONFIG_ID, &timezone)) == WUPS_STORAGE_ERROR_NOT_FOUND) {
+        if((storageRes = WUPS_GetInt(nullptr, TIMEZONE_CONFIG_ID, &timezone)) == WUPS_STORAGE_ERROR_NOT_FOUND)
             WUPS_StoreBool(nullptr, TIMEZONE_CONFIG_ID, timezone);
-        }
 
         WUPS_CloseStorage(); // Close the storage.
     }
@@ -362,18 +356,18 @@ static void setTimeInSettings(OSTime *ntpTime, OSTime *localTime, bool sync) {
     char timeString[256];
 
     if(sync)
+    {
         *ntpTime = NTPGetTime();
+        *localTime = OSGetTime();
+    }
 
-    if (*ntpTime == 0) {
+    if(*ntpTime == 0)
         WUPSConfigItem_SetDisplayName(ntpTimeHandle->handle, "Current NTP Time: N/A");
-    } else {
+    else {
         OSTicksToCalendarTime(*ntpTime, &ct);
         snprintf(timeString, 255, "Current NTP Time: %04d-%02d-%02d %02d:%02d:%02d:%04d:%04d\n", ct.tm_year, ct.tm_mon + 1, ct.tm_mday, ct.tm_hour, ct.tm_min, ct.tm_sec, ct.tm_msec, ct.tm_usec);
         WUPSConfigItem_SetDisplayName(ntpTimeHandle->handle, timeString);
     }
-
-    if(sync)
-        *localTime = OSGetTime();
 
     OSTicksToCalendarTime(*localTime, &ct);
     snprintf(timeString, 255, "Current SYS Time: %04d-%02d-%02d %02d:%02d:%02d:%04d:%04d\n", ct.tm_year, ct.tm_mon + 1, ct.tm_mday, ct.tm_hour, ct.tm_min, ct.tm_sec, ct.tm_msec, ct.tm_usec);
@@ -385,26 +379,27 @@ static void setTimeInSettings(OSTime *ntpTime, OSTime *localTime, bool sync) {
 static void settingsThreadMain() {
     OSTime ntpTime;
     OSTime localTime;
-    int i = 0;
+    int i = 29;
     bool sync;
 
-    setTimeInSettings(&ntpTime, &localTime, true);
     while(settingsThreadActive) {
-        OSSleepTicks(OSSecondsToTicks(1));
-
-        ntpTime += OSSecondsToTicks(1);
-        localTime += OSSecondsToTicks(1);
         sync = ++i == 30;
-        setTimeInSettings(&ntpTime, &localTime, sync);
         if(sync)
             i = 0;
+        else
+        {
+            ntpTime += OSSecondsToTicks(1);
+            localTime += OSSecondsToTicks(1);
+        }
+
+        setTimeInSettings(&ntpTime, &localTime, sync);
+        OSSleepTicks(OSSecondsToTicks(1));
     }
 }
 
 WUPS_GET_CONFIG() {
-    if (WUPS_OpenStorage() != WUPS_STORAGE_ERROR_SUCCESS) {
+    if(WUPS_OpenStorage() != WUPS_STORAGE_ERROR_SUCCESS)
         return 0;
-    }
 
     WUPSConfigHandle settings;
     WUPSConfig_CreateHandled(&settings, "Wii U Time Sync");
