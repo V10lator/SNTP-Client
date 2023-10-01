@@ -97,7 +97,7 @@ typedef struct
 extern "C" int32_t CCRSysSetSystemTime(OSTime time);
 extern "C" bool __OSSetAbsoluteSystemTime(OSTime time);
 
-void notifMain(const char *notif, bool error)
+static void notifMain(const char *notif, bool error)
 {
     bool ready = false;
     while(notifThreadActive && NotificationModule_IsOverlayReady(&ready) == NOTIFICATION_MODULE_RESULT_SUCCESS && !ready)
@@ -113,7 +113,7 @@ void notifMain(const char *notif, bool error)
     notifThreadActive = false;
 }
 
-void showNotification(const char *notif, bool error)
+static inline void showNotification(const char *notif, bool error)
 {
     if(notifThreadActive)
         return; // TODO
@@ -241,6 +241,13 @@ static void changeTimezone(ConfigItemMultipleValues *item, uint32_t value)
     timezone = value;
 }
 
+static void saveTimezone(ConfigItemMultipleValues *item, uint32_t value)
+{
+    (void)item;
+    WUPS_StoreInt(nullptr, TIMEZONE_CONFIG_ID, value);
+    changeTimezone(nullptr, value);
+}
+
 INITIALIZE_PLUGIN() {
     NotificationModule_InitLibrary();
     WUPSStorageError storageRes = WUPS_OpenStorage();
@@ -338,7 +345,7 @@ WUPS_GET_CONFIG() {
     WUPSConfig_AddCategoryByNameHandled(settings, "Preview Time", &preview);
 
     WUPSConfigItemBoolean_AddToCategoryHandled(settings, config, "enabledSync", "Syncing Enabled", enabledSync, &syncingEnabled);
-    WUPSConfigItemMultipleValues_AddToCategoryHandled(settings, config, TIMEZONE_CONFIG_ID, "Timezone", timezone, timezonesReadable, sizeof(timezonesReadable) / sizeof(timezonesReadable[0]), &changeTimezone);
+    WUPSConfigItemMultipleValues_AddToCategoryHandled(settings, config, TIMEZONE_CONFIG_ID, "Timezone", timezone, timezonesReadable, sizeof(timezonesReadable) / sizeof(timezonesReadable[0]), &saveTimezone);
 
     sysTimeHandle = WUPSConfigItemTime_AddToCategoryHandled(settings, preview, "sysTime", "Current SYS Time: Loading...");
     ntpTimeHandle = WUPSConfigItemTime_AddToCategoryHandled(settings, preview, "ntpTime", "Current NTP Time: Loading...");
