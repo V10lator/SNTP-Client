@@ -1,6 +1,5 @@
 #include <arpa/inet.h>
 #include <netdb.h>
-#include <netinet/in.h>
 #include <sys/socket.h>
 
 #include <cstdio>
@@ -186,17 +185,17 @@ static OSTime NTPGetTime()
             // Convert the port number integer to network big-endian style and save it to the server address structure.
             serv_addr.sin_port = htons(123); // UDP port
 
+            // Create the packet
+            ntp_packet packet __attribute__((__aligned__(0x40)));
+            OSBlockSet(&packet, 0, sizeof(packet));
+            // Set the first byte's bits to 00,001,011 for li = 0, vn = 1, and mode = 3.
+            packet.li_vn_mode = (1 << 3) | MODE_CLIENT;
+
             // Call up the server using its IP address and port number.
             if (connect(sockfd, (struct sockaddr*) &serv_addr, sizeof(serv_addr)) == 0) {
-                ntp_packet packet __attribute__((__aligned__(0x40)));
-                OSBlockSet(&packet, 0, sizeof(packet));
-
-                // Set the first byte's bits to 00,001,011 for li = 0, vn = 1, and mode = 3. The rest will be left set to zero.
-                packet.li_vn_mode = (1 << 3) | MODE_CLIENT;
-
-                // Send it the NTP packet it wants. If n == -1, it failed.
+                // Send it the NTP packet it wants.
                 if (write(sockfd, &packet, sizeof(packet)) == sizeof(packet)) {
-                    // Wait and receive the packet back from the server. If n == -1, it failed.
+                    // Wait and receive the packet back from the server.
                     if (read(sockfd, &packet, sizeof(packet)) == sizeof(packet)) {
                         // Basic validity check:
                         // li != 11
