@@ -60,20 +60,21 @@ WUPS_USE_WUT_DEVOPTAB();
 WUPS_USE_STORAGE("SNTP Client");
 
 static bool enabledSync = false;
+static int32_t timezone = DEFAULT_TIMEZONE;
+static volatile int32_t timezoneOffset;
 
 static ConfigItemTime *sysTimeHandle;
 static ConfigItemTime *ntpTimeHandle;
-static std::thread *timeThread = nullptr;
-static std::thread *notifThread = nullptr;
-static std::thread *settingsThread = nullptr;
-static volatile bool settingsThreadActive;
-static int32_t timezone;
-static volatile int32_t timezoneOffset;
 
 static OSMessageQueue timeQueue;
 static OSMessageQueue notifQueue;
 static OSMessage timeUpdates[TIME_QUEUE_SIZE];
 static OSMessage notifs[NOTIF_QUEUE_SIZE];
+
+static std::thread *timeThread = nullptr;
+static std::thread *notifThread = nullptr;
+static std::thread *settingsThread = nullptr;
+static volatile bool settingsThreadActive;
 
 // From https://github.com/lettier/ntpclient/blob/master/source/c/main.c
 typedef struct
@@ -314,16 +315,17 @@ INITIALIZE_PLUGIN() {
             WUPS_StoreBool(nullptr, TIMEZONE_CONFIG_ID, timezone);
 
         WUPS_CloseStorage(); // Close the storage.
-        changeTimezone(nullptr, timezone);
     }
+
+    changeTimezone(nullptr, timezone);
 }
 
 ON_APPLICATION_START()
 {
     OSInitMessageQueueEx(&notifQueue, notifs, NOTIF_QUEUE_SIZE, "SNTP Client Notifications");
-    notifThread = new std::thread(notifMain);
-
     OSInitMessageQueueEx(&timeQueue, timeUpdates, TIME_QUEUE_SIZE, "SNTP Client Time Update Requests");
+
+    notifThread = new std::thread(notifMain);
     timeThread = new std::thread(timeThreadMain);
 
     updateTime();
