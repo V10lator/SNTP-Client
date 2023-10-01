@@ -45,8 +45,9 @@
 #define MODE_CLIENT 0x03
 #define MODE_SERVER 0x04
 
+#define TIME_QUEUE_SIZE 2
 #define NOTIF_QUEUE_SIZE 10
-#define NOTIF_EXIT ((void *)0xDEADBABE)
+#define MSG_EXIT ((void *)0xDEADBABE)
 
 // Important plugin information.
 WUPS_PLUGIN_NAME("SNTP Client");
@@ -62,13 +63,16 @@ static bool enabledSync = false;
 
 static ConfigItemTime *sysTimeHandle;
 static ConfigItemTime *ntpTimeHandle;
-static std::thread *settingsThread = nullptr;
+static std::thread *timeThread = nullptr;
 static std::thread *notifThread = nullptr;
+static std::thread *settingsThread = nullptr;
 static volatile bool settingsThreadActive;
 static int32_t timezone;
 static int32_t timezoneOffset;
 
+static OSMessageQueue timeQueue;
 static OSMessageQueue notifQueue;
+static OSMessage timeUpdates[TIME_QUEUE_SIZE];
 static OSMessage notifs[NOTIF_QUEUE_SIZE];
 
 // From https://github.com/lettier/ntpclient/blob/master/source/c/main.c
@@ -121,16 +125,16 @@ static void notifMain()
     do
     {
         OSReceiveMessage(&notifQueue, &msg, OS_MESSAGE_FLAGS_BLOCKING);
-        if(msg.message == NOTIF_EXIT)
+        if(msg.message == MSG_EXIT)
             break;
 
         i = 0;
         while(i++ < 100 * 5 && NotificationModule_IsOverlayReady(&ready) == NOTIFICATION_MODULE_RESULT_SUCCESS && !ready)
             OSSleepTicks(OSMillisecondsToTicks(100));
 
+        notif = static_cast<NOTIFICATION *>(msg.message);
         if(ready)
         {
-            notif = static_cast<NOTIFICATION *>(msg.message);
             if(notif->error)
                 NotificationModule_AddErrorNotification(notif->msg);
             else
@@ -234,25 +238,46 @@ static OSTime NTPGetTime()
     return tick;
 }
 
-static void updateTime() {
-    OSTime time = NTPGetTime(); // Connect to the time server.
-    if(time == 0)
+static inline void updateTime() {
+    if(enabledSync)
     {
-        showNotification("Error getting time from " NTP_SERVER "!", true);
-        return;
+        OSMessage msg;
+        msg.message = nullptr;
+        OSSendMessage(&timeQueue, &msg, OS_MESSAGE_FLAGS_NONE);
     }
+}
 
-    OSTime currentTime = OSGetTime();
-    int timeDifference = abs(time - currentTime);
+static void timeThreadMain()
+{
+    OSMessage msg;
+    OSTime time;
+    OSTime tmpTime;
 
-    if (static_cast<uint64_t>(timeDifference) <= OSMillisecondsToTicks(250)) {
-        return; // Time difference is within 250 milliseconds, no need to update.
-    }
+    do
+    {
+        OSReceiveMessage(&timeQueue, &msg, OS_MESSAGE_FLAGS_BLOCKING);
+        if(msg.message == MSG_EXIT)
+            break;
 
-    if(SetSystemTime(time))
-        showNotification("Time synced", false);
-    else
-        showNotification("Error setting hardware clock!", true);
+        time = NTPGetTime(); // Connect to the time server.
+        tmpTime = OSGetTime();
+        if(time == 0)
+        {
+            showNotification("Error getting time from " NTP_SERVER "!", true);
+            continue;
+        }
+
+        tmpTime = static_cast<OSTime>(abs(time - tmpTime));
+
+        if (tmpTime <= static_cast<OSTime>(OSMillisecondsToTicks(250))) {
+            continue; // Time difference is within 250 milliseconds, no need to update.
+        }
+
+        if(SetSystemTime(time))
+            showNotification("Time synced", false);
+        else
+            showNotification("Error setting hardware clock!", true);
+    } while(1);
 }
 
 static void syncingEnabled(ConfigItemBoolean *item, bool value)
@@ -288,6 +313,9 @@ INITIALIZE_PLUGIN() {
     OSInitMessageQueueEx(&notifQueue, notifs, NOTIF_QUEUE_SIZE, "SNTP Client Notifications");
     notifThread = new std::thread(notifMain);
 
+    OSInitMessageQueueEx(&timeQueue, timeUpdates, TIME_QUEUE_SIZE, "SNTP Client Time Update Requests");
+    timeThread = new std::thread(timeThreadMain);
+
     WUPSStorageError storageRes = WUPS_OpenStorage();
     // Check if the plugin's settings have been saved before.
     if (storageRes == WUPS_STORAGE_ERROR_SUCCESS) {
@@ -305,14 +333,23 @@ INITIALIZE_PLUGIN() {
         showNotification("SNTP Client: Config error!", true);
 
     changeTimezone(nullptr, timezone);
-    if(enabledSync)
-        updateTime();
+    updateTime();
 }
 
 ON_APPLICATION_ENDS() {
+    OSMessage msg;
+    msg.message = MSG_EXIT;
+
+    if(timeThread != nullptr)
+    {
+        OSSendMessage(&timeQueue, &msg, OS_MESSAGE_FLAGS_BLOCKING);
+        timeThread->join();
+        delete timeThread;
+        timeThread = nullptr;
+    }
+
     if(notifThread != nullptr)
     {
-        OSMessage msg = { .message = NOTIF_EXIT };
         OSSendMessage(&notifQueue, &msg, OS_MESSAGE_FLAGS_BLOCKING);
         notifThread->join();
         delete notifThread;
@@ -389,14 +426,11 @@ WUPS_GET_CONFIG() {
 }
 
 WUPS_CONFIG_CLOSED() {
-    if (enabledSync) {
-        std::thread updateTimeThread(updateTime);
-        updateTimeThread.detach(); // Update time when settings are closed.
-    }
+    updateTime();
     
     settingsThreadActive = false;
+    WUPS_CloseStorage(); // Save all changes.
     settingsThread->join();
     delete settingsThread;
     settingsThread = nullptr;
-    WUPS_CloseStorage(); // Save all changes.
 }
