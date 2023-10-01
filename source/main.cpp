@@ -117,7 +117,6 @@ extern "C" bool __OSSetAbsoluteSystemTime(OSTime time);
 static void notifMain()
 {
     OSMessage msg;
-    uint32_t i;
     bool ready;
     NOTIFICATION *notif;
 
@@ -128,8 +127,7 @@ static void notifMain()
         if(msg.message == MSG_EXIT)
             break;
 
-        i = 0;
-        while(i++ < 100 * 5 && NotificationModule_IsOverlayReady(&ready) == NOTIFICATION_MODULE_RESULT_SUCCESS && !ready)
+        while(NotificationModule_IsOverlayReady(&ready) == NOTIFICATION_MODULE_RESULT_SUCCESS && !ready)
             OSSleepTicks(OSMillisecondsToTicks(100));
 
         if(ready)
@@ -306,12 +304,6 @@ static void saveTimezone(ConfigItemMultipleValues *item, uint32_t value)
 }
 
 INITIALIZE_PLUGIN() {
-    OSInitMessageQueueEx(&notifQueue, notifs, NOTIF_QUEUE_SIZE, "SNTP Client Notifications");
-    notifThread = new std::thread(notifMain);
-
-    OSInitMessageQueueEx(&timeQueue, timeUpdates, TIME_QUEUE_SIZE, "SNTP Client Time Update Requests");
-    timeThread = new std::thread(timeThreadMain);
-
     WUPSStorageError storageRes = WUPS_OpenStorage();
     // Check if the plugin's settings have been saved before.
     if(storageRes == WUPS_STORAGE_ERROR_SUCCESS) {
@@ -322,11 +314,18 @@ INITIALIZE_PLUGIN() {
             WUPS_StoreBool(nullptr, TIMEZONE_CONFIG_ID, timezone);
 
         WUPS_CloseStorage(); // Close the storage.
+        changeTimezone(nullptr, timezone);
     }
-    else
-        showNotification("SNTP Client: Config error!", true);
+}
 
-    changeTimezone(nullptr, timezone);
+ON_APPLICATION_START()
+{
+    OSInitMessageQueueEx(&notifQueue, notifs, NOTIF_QUEUE_SIZE, "SNTP Client Notifications");
+    notifThread = new std::thread(notifMain);
+
+    OSInitMessageQueueEx(&timeQueue, timeUpdates, TIME_QUEUE_SIZE, "SNTP Client Time Update Requests");
+    timeThread = new std::thread(timeThreadMain);
+
     updateTime();
 }
 
