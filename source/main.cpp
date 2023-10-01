@@ -1,37 +1,27 @@
 #include <arpa/inet.h>
-#include <malloc.h>
 #include <netdb.h>
-#include <netinet/tcp.h>
 #include <netinet/in.h>
-#include <string.h>
 #include <sys/socket.h>
-#include <unistd.h>
 
-#include <coreinit/debug.h>
-#include <coreinit/filesystem.h>
-#include <coreinit/ios.h>
-#include <coreinit/mcp.h>
+#include <cstdio>
+#include <cstring>
+
 #include <coreinit/memdefaultheap.h>
+#include <coreinit/memory.h>
 #include <coreinit/messagequeue.h>
 #include <coreinit/thread.h>
 #include <coreinit/time.h>
-#include <coreinit/thread.h>
 #include <nn/pdm.h>
 #include <notifications/notifications.h>
-#include <whb/proc.h>
 #include <wups.h>
 #include <wups/config.h>
-#include <wups/config/WUPSConfigItemMultipleValues.h>
 #include <wups/config/WUPSConfigItemBoolean.h>
-#include <wups/config/WUPSConfigItemStub.h>
 #include <wups/config/WUPSConfigItemIntegerRange.h>
+#include <wups/config/WUPSConfigItemMultipleValues.h>
+#include <wups/config/WUPSConfigItemStub.h>
 
 #include "ConfigItemTime.h"
 #include "timezones.h"
-
-#include <cstdlib>
-#include <cstdio>
-#include <cstring>
 
 #define SYNCING_ENABLED_CONFIG_ID "enabledSync"
 #define TIMEZONE_CONFIG_ID "timezone"
@@ -187,11 +177,11 @@ static OSTime NTPGetTime()
         if (sockfd > -1) {
             // Prepare socket address
             struct sockaddr_in serv_addr;
-            memset(&serv_addr, 0, sizeof(serv_addr));
+            OSBlockSet(&serv_addr, 0, sizeof(serv_addr));
             serv_addr.sin_family = AF_INET;
 
             // Copy the server's IP address to the server address structure.
-            memcpy(&serv_addr.sin_addr.s_addr, server->h_addr, server->h_length);
+            OSBlockMove(&serv_addr.sin_addr.s_addr, server->h_addr, server->h_length, false);
 
             // Convert the port number integer to network big-endian style and save it to the server address structure.
             serv_addr.sin_port = htons(123); // UDP port
@@ -199,7 +189,7 @@ static OSTime NTPGetTime()
             // Call up the server using its IP address and port number.
             if (connect(sockfd, (struct sockaddr*) &serv_addr, sizeof(serv_addr)) == 0) {
                 ntp_packet packet __attribute__((__aligned__(0x40)));
-                memset(&packet, 0, sizeof(packet));
+                OSBlockSet(&packet, 0, sizeof(packet));
 
                 // Set the first byte's bits to 00,001,011 for li = 0, vn = 1, and mode = 3. The rest will be left set to zero.
                 packet.li_vn_mode = (1 << 3) | MODE_CLIENT;
