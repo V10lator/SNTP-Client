@@ -11,6 +11,8 @@
 #include <coreinit/filesystem.h>
 #include <coreinit/ios.h>
 #include <coreinit/mcp.h>
+#include <coreinit/memdefaultheap.h>
+#include <coreinit/messagequeue.h>
 #include <coreinit/time.h>
 #include <coreinit/thread.h>
 #include <nn/pdm.h>
@@ -43,6 +45,9 @@
 #define MODE_CLIENT 0x03
 #define MODE_SERVER 0x04
 
+#define NOTIF_QUEUE_SIZE 10
+#define NOTIF_EXIT ((void *)0xDEADBABE)
+
 // Important plugin information.
 WUPS_PLUGIN_NAME("SNTP Client");
 WUPS_PLUGIN_DESCRIPTION("A plugin that synchronizes a Wii U's clock with SNTP.");
@@ -60,9 +65,11 @@ static ConfigItemTime *ntpTimeHandle;
 static std::thread *settingsThread = nullptr;
 static std::thread *notifThread = nullptr;
 static volatile bool settingsThreadActive;
-static volatile bool notifThreadActive = false;
 static int32_t timezone;
 static int32_t timezoneOffset;
+
+static OSMessageQueue notifQueue;
+static OSMessage notifs[NOTIF_QUEUE_SIZE];
 
 // From https://github.com/lettier/ntpclient/blob/master/source/c/main.c
 typedef struct
@@ -94,32 +101,61 @@ typedef struct
 
 } ntp_packet;              // Total: 384 bits or 48 bytes.
 
+typedef struct
+{
+    bool error;
+    const char *msg;
+} NOTIFICATION;
+
 extern "C" int32_t CCRSysSetSystemTime(OSTime time);
 extern "C" bool __OSSetAbsoluteSystemTime(OSTime time);
 
-static void notifMain(const char *notif, bool error)
+static void notifMain()
 {
-    bool ready = false;
-    while(notifThreadActive && NotificationModule_IsOverlayReady(&ready) == NOTIFICATION_MODULE_RESULT_SUCCESS && !ready)
-        OSSleepTicks(OSMillisecondsToTicks(100));
+    OSMessage msg;
+    uint32_t i;
+    bool ready;
+    NOTIFICATION *notif;
 
-    if(ready) {
-        if(error)
-            NotificationModule_AddErrorNotification(notif);
-        else
-            NotificationModule_AddInfoNotification(notif);
-    }
+    NotificationModule_InitLibrary();
+    do
+    {
+        OSReceiveMessage(&notifQueue, &msg, OS_MESSAGE_FLAGS_BLOCKING);
+        if(msg.message == NOTIF_EXIT)
+            break;
 
-    notifThreadActive = false;
+        i = 0;
+        while(i++ < 100 * 5 && NotificationModule_IsOverlayReady(&ready) == NOTIFICATION_MODULE_RESULT_SUCCESS && !ready)
+            OSSleepTicks(OSMillisecondsToTicks(100));
+
+        if(ready)
+        {
+            notif = static_cast<NOTIFICATION *>(msg.message);
+            if(notif->error)
+                NotificationModule_AddErrorNotification(notif->msg);
+            else
+                NotificationModule_AddInfoNotification(notif->msg);
+        }
+
+        MEMFreeToDefaultHeap(notif);
+    } while(1);
+
+    NotificationModule_DeInitLibrary();
 }
 
 static inline void showNotification(const char *notif, bool error)
 {
-    if(notifThreadActive)
-        return; // TODO
+    NOTIFICATION *n = static_cast<NOTIFICATION *>(MEMAllocFromDefaultHeap(sizeof(NOTIFICATION)));
+    if(n == NULL)
+        return;
 
-    notifThreadActive = true;
-    notifThread = new std::thread(notifMain, notif, error);
+    n->error = error;
+    n->msg = notif;
+
+    OSMessage msg;
+    msg.message = n;
+    if(!OSSendMessage(&notifQueue, &msg, OS_MESSAGE_FLAGS_NONE))
+        MEMFreeToDefaultHeap(n);
 }
 
 static inline bool SetSystemTime(OSTime time)
@@ -249,7 +285,9 @@ static void saveTimezone(ConfigItemMultipleValues *item, uint32_t value)
 }
 
 INITIALIZE_PLUGIN() {
-    NotificationModule_InitLibrary();
+    OSInitMessageQueueEx(&notifQueue, notifs, NOTIF_QUEUE_SIZE, "SNTP Client Notifications");
+    notifThread = new std::thread(notifMain);
+
     WUPSStorageError storageRes = WUPS_OpenStorage();
     // Check if the plugin's settings have been saved before.
     if (storageRes == WUPS_STORAGE_ERROR_SUCCESS) {
@@ -267,24 +305,19 @@ INITIALIZE_PLUGIN() {
         showNotification("SNTP Client: Config error!", true);
 
     changeTimezone(nullptr, timezone);
-    NotificationModule_DeInitLibrary();
-}
-
-ON_APPLICATION_START() {
-    NotificationModule_InitLibrary();
     if(enabledSync)
         updateTime();
 }
 
 ON_APPLICATION_ENDS() {
-    if(notifThreadActive)
+    if(notifThread != nullptr)
     {
-        notifThreadActive = false;
+        OSMessage msg = { .message = NOTIF_EXIT };
+        OSSendMessage(&notifQueue, &msg, OS_MESSAGE_FLAGS_BLOCKING);
         notifThread->join();
         delete notifThread;
         notifThread = nullptr;
     }
-    NotificationModule_DeInitLibrary();
 }
 
 static void setTimeInSettings(OSTime *ntpTime, OSTime *localTime, bool sync) {
