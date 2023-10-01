@@ -13,6 +13,7 @@
 #include <coreinit/mcp.h>
 #include <coreinit/memdefaultheap.h>
 #include <coreinit/messagequeue.h>
+#include <coreinit/thread.h>
 #include <coreinit/time.h>
 #include <coreinit/thread.h>
 #include <nn/pdm.h>
@@ -31,7 +32,6 @@
 #include <cstdlib>
 #include <cstdio>
 #include <cstring>
-#include <thread>
 
 #define SYNCING_ENABLED_CONFIG_ID "enabledSync"
 #define TIMEZONE_CONFIG_ID "timezone"
@@ -71,9 +71,9 @@ static OSMessageQueue notifQueue;
 static OSMessage timeUpdates[TIME_QUEUE_SIZE];
 static OSMessage notifs[NOTIF_QUEUE_SIZE];
 
-static std::thread *timeThread = nullptr;
-static std::thread *notifThread = nullptr;
-static std::thread *settingsThread = nullptr;
+static OSThread *timeThread = nullptr;
+static OSThread *notifThread = nullptr;
+static OSThread *settingsThread = nullptr;
 static volatile bool settingsThreadActive;
 
 // From https://github.com/lettier/ntpclient/blob/master/source/c/main.c
@@ -115,8 +115,10 @@ typedef struct
 extern "C" int32_t CCRSysSetSystemTime(OSTime time);
 extern "C" bool __OSSetAbsoluteSystemTime(OSTime time);
 
-static void notifMain()
+static int notifMain(int argc, const char **argv)
 {
+    (void)argc;
+    (void)argv;
     OSMessage msg;
     bool ready;
     NOTIFICATION *notif;
@@ -144,6 +146,7 @@ static void notifMain()
     } while(1);
 
     NotificationModule_DeInitLibrary();
+    return 0;
 }
 
 static inline void showNotification(const char *notif, bool error)
@@ -244,8 +247,11 @@ static inline void updateTime() {
     }
 }
 
-static void timeThreadMain()
+static int timeThreadMain(int argc, const char **argv)
 {
+    (void)argc;
+    (void)argv;
+
     OSMessage msg;
     OSTime time;
     OSTime tmpTime;
@@ -254,7 +260,7 @@ static void timeThreadMain()
     {
         OSReceiveMessage(&timeQueue, &msg, OS_MESSAGE_FLAGS_BLOCKING);
         if(msg.message == MSG_EXIT)
-            return;
+            return 0;
 
         time = NTPGetTime(); // Connect to the time server.
         tmpTime = OSGetTime();
@@ -304,6 +310,31 @@ static void saveTimezone(ConfigItemMultipleValues *item, uint32_t value)
     changeTimezone(nullptr, value);
 }
 
+static OSThread *startThread(const char *name, OSThreadEntryPointFn mainfunc, OSThreadAttributes attribs)
+{
+    OSThread *ost = static_cast<OSThread *>(MEMAllocFromDefaultHeapEx(sizeof(OSThread) + 0x1000, 8));
+    if(ost != NULL)
+    {
+        if(OSCreateThread(ost, mainfunc, 0, nullptr, reinterpret_cast<uint8_t *>(ost) + (0x1000 + sizeof(OSThread)), 0x1000, 5, attribs))
+        {
+            OSSetThreadName(ost, name);
+            OSResumeThread(ost);
+            return ost;
+        }
+
+        MEMFreeToDefaultHeap(ost);
+    }
+
+    return NULL;
+}
+
+static inline void stopThread(OSThread *thread)
+{
+    OSJoinThread(thread, nullptr);
+    OSDetachThread(thread);
+    MEMFreeToDefaultHeap(thread);
+}
+
 INITIALIZE_PLUGIN() {
     WUPSStorageError storageRes = WUPS_OpenStorage();
     // Check if the plugin's settings have been saved before.
@@ -325,8 +356,8 @@ ON_APPLICATION_START()
     OSInitMessageQueueEx(&notifQueue, notifs, NOTIF_QUEUE_SIZE, "SNTP Client Notifications");
     OSInitMessageQueueEx(&timeQueue, timeUpdates, TIME_QUEUE_SIZE, "SNTP Client Time Update Requests");
 
-    notifThread = new std::thread(notifMain);
-    timeThread = new std::thread(timeThreadMain);
+    notifThread = startThread("SNTP Client Notification Thread", notifMain, OS_THREAD_ATTRIB_AFFINITY_CPU0);
+    timeThread = startThread("SNTP Client Time Update Thread", timeThreadMain, OS_THREAD_ATTRIB_AFFINITY_CPU2);
 
     updateTime();
 }
@@ -338,16 +369,14 @@ ON_APPLICATION_ENDS() {
     if(timeThread != nullptr)
     {
         OSSendMessage(&timeQueue, &msg, OS_MESSAGE_FLAGS_BLOCKING);
-        timeThread->join();
-        delete timeThread;
+        stopThread(timeThread);
         timeThread = nullptr;
     }
 
     if(notifThread != nullptr)
     {
         OSSendMessage(&notifQueue, &msg, OS_MESSAGE_FLAGS_BLOCKING);
-        notifThread->join();
-        delete notifThread;
+        stopThread(notifThread);
         notifThread = nullptr;
     }
 }
@@ -377,7 +406,10 @@ static void setTimeInSettings(OSTime *ntpTime, OSTime *localTime, bool sync) {
     //TODO: Update screen without the user needing to press a button
 }
 
-static void settingsThreadMain() {
+static int settingsThreadMain(int argc, const char **argv) {
+    (void)argc;
+    (void)argv;
+
     OSTime ntpTime;
     OSTime localTime;
     int i = 29;
@@ -396,6 +428,8 @@ static void settingsThreadMain() {
         setTimeInSettings(&ntpTime, &localTime, sync);
         OSSleepTicks(OSSecondsToTicks(1));
     }
+
+    return 0;
 }
 
 WUPS_GET_CONFIG() {
@@ -416,7 +450,7 @@ WUPS_GET_CONFIG() {
     sysTimeHandle = WUPSConfigItemTime_AddToCategoryHandled(settings, preview, "sysTime", "Current SYS Time: Loading...");
     ntpTimeHandle = WUPSConfigItemTime_AddToCategoryHandled(settings, preview, "ntpTime", "Current NTP Time: Loading...");
     settingsThreadActive = true;
-    settingsThread = new std::thread(settingsThreadMain);
+    settingsThread = startThread("SNTP Client Settings Thread", settingsThreadMain, OS_THREAD_ATTRIB_AFFINITY_CPU0);
 
     return settings;
 }
@@ -426,7 +460,6 @@ WUPS_CONFIG_CLOSED() {
     
     settingsThreadActive = false;
     WUPS_CloseStorage(); // Save all changes.
-    settingsThread->join();
-    delete settingsThread;
+    stopThread(settingsThread);
     settingsThread = nullptr;
 }
