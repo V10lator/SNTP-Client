@@ -203,19 +203,17 @@ static OSTime NTPGetTime()
                         // stratum != 0
                         // transmit timestamp != 0
                         if ((packet.li_vn_mode & LI_UNSYNC) != LI_UNSYNC && (packet.li_vn_mode & MODE_MASK) == MODE_SERVER && packet.stratum != 0 && (packet.txTm_s | packet.txTm_f)) {
-                            // These two fields contain the time-stamp seconds as the packet left the NTP server.
-                            // The number of seconds correspond to the seconds passed since 1900.
-                            // ntohl() converts the bit/byte order from the network's to host's "endianness".
-                            packet.txTm_s = ntohl(packet.txTm_s); // Time-stamp seconds.
-                            packet.txTm_f = ntohl(packet.txTm_f); // Time-stamp fraction of a second.
-
+                            // Adjust timestamp
+                            packet.txTm_s = ntohl(packet.txTm_s);
+                            packet.txTm_s -= NTP_TIMESTAMP_DELTA;
                             // Convert timezone
                             packet.txTm_s += timezoneOffset;
 
-                            // Convert seconds to ticks and adjust timestamp
-                            tick += OSSecondsToTicks(packet.txTm_s - NTP_TIMESTAMP_DELTA);
-                            // Convert fraction to ticks
-                            tick += OSNanosecondsToTicks((packet.txTm_f * 1000000000llu) >> 32);
+                            // Convert seconds to ticks
+                            tick = OSSecondsToTicks(packet.txTm_s);
+
+                            // Convert fraction of seconds
+                            tick += OSNanosecondsToTicks((ntohl(packet.txTm_f) * 1000000000llu) >> 32);
                         }
                     }
                 }
