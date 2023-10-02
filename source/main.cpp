@@ -105,6 +105,8 @@ typedef struct
 extern "C" int32_t CCRSysSetSystemTime(OSTime time);
 extern "C" bool __OSSetAbsoluteSystemTime(OSTime time);
 
+#define get_ip_str(sad) inet_ntoa(reinterpret_cast<sockaddr_in *>(sad->ai_addr)->sin_addr)
+
 static int notifMain(int argc, const char **argv)
 {
     (void)argc;
@@ -238,16 +240,16 @@ static OSTime NTPGetTime()
                                 break;
                             }
 
-                            showNotificationF(true, "SNTP Client: Got invalid reply from %s!", inet_ntoa(reinterpret_cast<sockaddr_in *>(addr->ai_addr)->sin_addr));
+                            showNotificationF(true, "SNTP Client: Got invalid reply from %s!", get_ip_str(addr));
                         }
                         else
-                            showNotificationF(true, "SNTP Client: Error reading from %s: %s", inet_ntoa(reinterpret_cast<sockaddr_in *>(addr->ai_addr)->sin_addr), strerror(errno));
+                            showNotificationF(true, "SNTP Client: Error reading from %s: %s", get_ip_str(addr), strerror(errno));
                     }
                     else
-                        showNotificationF(true, "SNTP Client: Error writing to %s: %s!", inet_ntoa(reinterpret_cast<sockaddr_in *>(addr->ai_addr)->sin_addr), strerror(errno));
+                        showNotificationF(true, "SNTP Client: Error writing to %s: %s!", get_ip_str(addr), strerror(errno));
                 }
                 else
-                    showNotificationF(true, "SNTP Client: Error connecting to %s: %s", inet_ntoa(reinterpret_cast<sockaddr_in *>(addr->ai_addr)->sin_addr), strerror(errno));
+                    showNotificationF(true, "SNTP Client: Error connecting to %s: %s", get_ip_str(addr), strerror(errno));
 
                 close(sockfd);
             }
