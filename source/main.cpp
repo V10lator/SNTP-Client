@@ -48,7 +48,7 @@ WUPS_PLUGIN_LICENSE("MIT");
 WUPS_USE_WUT_DEVOPTAB();
 WUPS_USE_STORAGE("SNTP Client");
 
-static bool enabledSync = false;
+static bool enabledSync = true;
 static int32_t timezone = DEFAULT_TIMEZONE;
 static volatile int32_t timezoneOffset;
 
