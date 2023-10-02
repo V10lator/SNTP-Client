@@ -113,7 +113,6 @@ static int notifMain(int argc, const char **argv)
     (void)argv;
     OSMessage msg;
     bool ready;
-    NOTIFICATION *notif;
 
     NotificationModule_InitLibrary();
     do
@@ -127,11 +126,10 @@ static int notifMain(int argc, const char **argv)
 
         if(ready)
         {
-            notif = static_cast<NOTIFICATION *>(msg.message);
-            if(notif->error)
-                NotificationModule_AddErrorNotification(notif->msg);
+            if(static_cast<NOTIFICATION *>(msg.message)->error)
+                NotificationModule_AddErrorNotification(static_cast<NOTIFICATION *>(msg.message)->msg);
             else
-                NotificationModule_AddInfoNotification(notif->msg);
+                NotificationModule_AddInfoNotification(static_cast<NOTIFICATION *>(msg.message)->msg);
         }
 
         MEMFreeToDefaultHeap(msg.message);
