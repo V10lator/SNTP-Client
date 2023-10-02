@@ -471,6 +471,7 @@ WUPS_GET_CONFIG() {
 
     sysTimeHandle = WUPSConfigItemTime_AddToCategoryHandled(settings, preview, "sysTime", "Current SYS Time: Loading...");
     ntpTimeHandle = WUPSConfigItemTime_AddToCategoryHandled(settings, preview, "ntpTime", "Current NTP Time: Loading...");
+
     settingsThreadActive = true;
     settingsThread = startThread("SNTP Client Settings Thread", settingsThreadMain, 0x4000, OS_THREAD_ATTRIB_AFFINITY_CPU1);
 
@@ -478,10 +479,12 @@ WUPS_GET_CONFIG() {
 }
 
 WUPS_CONFIG_CLOSED() {
-    updateTime();
-    
     settingsThreadActive = false;
+    updateTime();
     WUPS_CloseStorage(); // Save all changes.
-    stopThread(settingsThread);
-    settingsThread = nullptr;
+    if(settingsThread != nullptr)
+    {
+        stopThread(settingsThread);
+        settingsThread = nullptr;
+    }
 }
