@@ -330,7 +330,7 @@ INITIALIZE_PLUGIN() {
             WUPS_StoreBool(nullptr, SYNCING_ENABLED_CONFIG_ID, enabledSync);
 
         if((storageRes = WUPS_GetInt(nullptr, TIMEZONE_CONFIG_ID, &timezone)) == WUPS_STORAGE_ERROR_NOT_FOUND)
-            WUPS_StoreBool(nullptr, TIMEZONE_CONFIG_ID, timezone);
+            WUPS_StoreInt(nullptr, TIMEZONE_CONFIG_ID, timezone);
 
         WUPS_CloseStorage(); // Close the storage.
     }
