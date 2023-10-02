@@ -196,7 +196,7 @@ static OSTime NTPGetTime()
     int sockfd = getaddrinfo(NTP_SERVER, "123", &hints, &addys);
     if(!sockfd && addys != NULL)
     {
-        // Create a socket
+        // Loop through all IP addys returned by the DNS
         for(struct addrinfo *addr = addys; addr != NULL; addr = addr->ai_next)
         {
             // Reset packet
@@ -204,10 +204,11 @@ static OSTime NTPGetTime()
             // Set the first byte's bits to 00,001,011 for li = 0, vn = 1, and mode = 3.
             packet.li_vn_mode = (1 << 3) | MODE_CLIENT;
 
+            // Create a socket
             sockfd = socket(addr->ai_family, addr->ai_socktype, addr->ai_protocol);
             if(sockfd != -1)
             {
-                // Call up the server using its IP address and port number.
+                // Connect to the server
                 if(connect(sockfd, addr->ai_addr, addr->ai_addrlen) == 0)
                 {
                     // Send it the NTP packet it wants.
@@ -252,7 +253,7 @@ static OSTime NTPGetTime()
             }
             else
                 showNotificationF(true, "SNTP Client: Error opening socket: %s", strerror(errno));
-        }
+        } // End of IP loop
 
         freeaddrinfo(addys);
     }
