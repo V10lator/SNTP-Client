@@ -16,13 +16,13 @@
 #include <wups.h>
 #include <wups/config.h>
 #include <wups/config/WUPSConfigItemBoolean.h>
-#include <wups/config/WUPSConfigItemIntegerRange.h>
 #include <wups/config/WUPSConfigItemMultipleValues.h>
-#include <wups/config/WUPSConfigItemStub.h>
 
+#include "ConfigItemNtpServer.h"
 #include "ConfigItemTime.h"
 #include "timezones.h"
 
+#define NTPSERVER_CONFIG_ID "ntpServer"
 #define SYNCING_ENABLED_CONFIG_ID "enabledSync"
 #define TIMEZONE_CONFIG_ID "timezone"
 // Seconds between 1900 (NTP epoch) and 2000 (Wii U epoch)
@@ -30,7 +30,6 @@
 #define DEFAULT_TIMEZONE 321
 
 #define LI_UNSYNC 0xc0
-#define NTP_SERVER "pool.ntp.org"
 #define MODE_MASK 0x07
 #define MODE_CLIENT 0x03
 #define MODE_SERVER 0x04
@@ -50,6 +49,7 @@ WUPS_USE_WUT_DEVOPTAB();
 WUPS_USE_STORAGE("SNTP Client");
 
 static bool enabledSync = true;
+static volatile char ntp_server[128] = "pool.ntp.org";
 static int32_t timezone = DEFAULT_TIMEZONE;
 static volatile int32_t timezoneOffset;
 
@@ -193,7 +193,7 @@ static OSTime NTPGetTime()
     // Create the packet
     ntp_packet packet __attribute__((__aligned__(0x40)));
 
-    int sockfd = getaddrinfo(NTP_SERVER, "123", &hints, &addys);
+    int sockfd = getaddrinfo((char *)ntp_server, "123", &hints, &addys);
     if(!sockfd && addys != NULL)
     {
         // Loop through all IP addys returned by the DNS
@@ -367,6 +367,9 @@ INITIALIZE_PLUGIN() {
         if((storageRes = WUPS_GetInt(nullptr, TIMEZONE_CONFIG_ID, &timezone)) == WUPS_STORAGE_ERROR_NOT_FOUND)
             WUPS_StoreInt(nullptr, TIMEZONE_CONFIG_ID, timezone);
 
+        if((storageRes = WUPS_GetString(nullptr, NTPSERVER_CONFIG_ID, (char *)ntp_server, 127)) == WUPS_STORAGE_ERROR_NOT_FOUND)
+            WUPS_StoreString(nullptr, NTPSERVER_CONFIG_ID, (char *)ntp_server);
+
         WUPS_CloseStorage(); // Close the storage.
     }
 
@@ -450,6 +453,12 @@ static int settingsThreadMain(int argc, const char **argv) {
     return 0;
 }
 
+static void dummyCallback(ConfigItemNtpServer *item, const char *value)
+{
+    (void)item;
+    (void)value;
+}
+
 WUPS_GET_CONFIG() {
     if(WUPS_OpenStorage() != WUPS_STORAGE_ERROR_SUCCESS)
         return 0;
@@ -462,8 +471,9 @@ WUPS_GET_CONFIG() {
     WUPSConfigCategoryHandle preview;
     WUPSConfig_AddCategoryByNameHandled(settings, "Preview Time", &preview);
 
-    WUPSConfigItemBoolean_AddToCategoryHandled(settings, config, "enabledSync", "Syncing Enabled", enabledSync, &syncingEnabled);
+    WUPSConfigItemBoolean_AddToCategoryHandled(settings, config, SYNCING_ENABLED_CONFIG_ID, "Syncing Enabled", enabledSync, &syncingEnabled);
     WUPSConfigItemMultipleValues_AddToCategoryHandled(settings, config, TIMEZONE_CONFIG_ID, "Timezone", timezone, timezonesReadable, sizeof(timezonesReadable) / sizeof(timezonesReadable[0]), &saveTimezone);
+    WUPSConfigItemNtpServer_AddToCategoryHandled(settings, config, NTPSERVER_CONFIG_ID, "NTP Server", (char *)ntp_server, &dummyCallback);
 
     sysTimeHandle = WUPSConfigItemTime_AddToCategoryHandled(settings, preview, "sysTime", "Current SYS Time: Loading...");
     ntpTimeHandle = WUPSConfigItemTime_AddToCategoryHandled(settings, preview, "ntpTime", "Current NTP Time: Loading...");
