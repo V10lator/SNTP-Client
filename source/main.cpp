@@ -403,51 +403,47 @@ ON_APPLICATION_ENDS() {
     }
 }
 
-static void setTimeInSettings(OSTime *ntpTime, OSTime *localTime, bool sync) {
-    OSCalendarTime ct;
-    char timeString[256];
-
-    if(sync)
-    {
-        *ntpTime = NTPGetTime();
-        *localTime = OSGetTime();
-    }
-
-    if(*ntpTime == 0)
-        WUPSConfigItem_SetDisplayName(ntpTimeHandle->handle, "Current NTP Time: N/A");
-    else {
-        OSTicksToCalendarTime(*ntpTime, &ct);
-        snprintf(timeString, 255, "Current NTP Time: %04d-%02d-%02d %02d:%02d:%02d:%04d:%04d\n", ct.tm_year, ct.tm_mon + 1, ct.tm_mday, ct.tm_hour, ct.tm_min, ct.tm_sec, ct.tm_msec, ct.tm_usec);
-        WUPSConfigItem_SetDisplayName(ntpTimeHandle->handle, timeString);
-    }
-
-    OSTicksToCalendarTime(*localTime, &ct);
-    snprintf(timeString, 255, "Current SYS Time: %04d-%02d-%02d %02d:%02d:%02d:%04d:%04d\n", ct.tm_year, ct.tm_mon + 1, ct.tm_mday, ct.tm_hour, ct.tm_min, ct.tm_sec, ct.tm_msec, ct.tm_usec);
-    WUPSConfigItem_SetDisplayName(sysTimeHandle->handle, timeString);
-
-    //TODO: Update screen without the user needing to press a button
-}
-
 static int settingsThreadMain(int argc, const char **argv) {
     (void)argc;
     (void)argv;
 
-    OSTime ntpTime;
-    OSTime localTime;
-    int i = 29;
-    bool sync;
+    uint32_t i = 1;
+    OSTime ntpTime = 0;
+    OSTime localTime = 0;
+    OSCalendarTime ct;
+    char timeString[256];
 
-    while(settingsThreadActive) {
-        sync = ++i == 30;
-        if(sync)
-            i = 0;
+    while(settingsThreadActive)
+    {
+        if(!--i)
+        {
+            i = 30;
+            ntpTime = NTPGetTime();
+            localTime = OSGetTime();
+        }
         else
         {
-            ntpTime += OSSecondsToTicks(1);
+            if(ntpTime)
+                ntpTime += OSSecondsToTicks(1);
+
             localTime += OSSecondsToTicks(1);
         }
 
-        setTimeInSettings(&ntpTime, &localTime, sync);
+        if(ntpTime)
+        {
+            OSTicksToCalendarTime(ntpTime, &ct);
+            snprintf(timeString, 255, "Current NTP Time: %04d-%02d-%02d %02d:%02d:%02d:%04d:%04d\n", ct.tm_year, ct.tm_mon + 1, ct.tm_mday, ct.tm_hour, ct.tm_min, ct.tm_sec, ct.tm_msec, ct.tm_usec);
+            WUPSConfigItem_SetDisplayName(ntpTimeHandle->handle, timeString);
+        }
+        else
+            WUPSConfigItem_SetDisplayName(ntpTimeHandle->handle, "Current NTP Time: N/A");
+
+        OSTicksToCalendarTime(localTime, &ct);
+        snprintf(timeString, 255, "Current SYS Time: %04d-%02d-%02d %02d:%02d:%02d:%04d:%04d\n", ct.tm_year, ct.tm_mon + 1, ct.tm_mday, ct.tm_hour, ct.tm_min, ct.tm_sec, ct.tm_msec, ct.tm_usec);
+        WUPSConfigItem_SetDisplayName(sysTimeHandle->handle, timeString);
+
+        //TODO: Update screen without the user needing to press a button
+
         OSSleepTicks(OSSecondsToTicks(1));
     }
 
