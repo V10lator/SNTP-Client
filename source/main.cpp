@@ -187,7 +187,8 @@ static OSTime NTPGetTime()
     hints.ai_family = AF_INET;
     hints.ai_socktype = SOCK_DGRAM;
     hints.ai_protocol = IPPROTO_UDP;
-    hints.ai_flags = AI_CANONNAME | AI_ADDRCONFIG;
+    hints.ai_flags = AI_ADDRCONFIG;
+
 
     // Create the packet
     ntp_packet packet __attribute__((__aligned__(0x40)));
@@ -236,16 +237,16 @@ static OSTime NTPGetTime()
                                 break;
                             }
 
-                            showNotificationF(true, "SNTP Client: Got invalid reply from %s!", addr->ai_canonname);
+                            showNotificationF(true, "SNTP Client: Got invalid reply from %s!", inet_ntoa(reinterpret_cast<sockaddr_in *>(addr->ai_addr)->sin_addr));
                         }
                         else
-                            showNotificationF(true, "SNTP Client: Error reading from %s: %s", addr->ai_canonname, strerror(errno));
+                            showNotificationF(true, "SNTP Client: Error reading from %s: %s", inet_ntoa(reinterpret_cast<sockaddr_in *>(addr->ai_addr)->sin_addr), strerror(errno));
                     }
                     else
-                        showNotificationF(true, "SNTP Client: Error writing to %s: %s!", addr->ai_canonname, strerror(errno));
+                        showNotificationF(true, "SNTP Client: Error writing to %s: %s!", inet_ntoa(reinterpret_cast<sockaddr_in *>(addr->ai_addr)->sin_addr), strerror(errno));
                 }
                 else
-                    showNotificationF(true, "SNTP Client: Error connecting to %s: %s", addr->ai_canonname, strerror(errno));
+                    showNotificationF(true, "SNTP Client: Error connecting to %s: %s", inet_ntoa(reinterpret_cast<sockaddr_in *>(addr->ai_addr)->sin_addr), strerror(errno));
 
                 close(sockfd);
             }
