@@ -2,6 +2,7 @@
 #include <netdb.h>
 #include <sys/socket.h>
 
+#include <cstdarg>
 #include <cstdio>
 #include <cstring>
 
@@ -98,7 +99,7 @@ typedef struct
 typedef struct
 {
     bool error;
-    const char *msg;
+    char msg[1024];;
 } NOTIFICATION;
 
 extern "C" int32_t CCRSysSetSystemTime(OSTime time);
@@ -138,7 +139,7 @@ static int notifMain(int argc, const char **argv)
     return 0;
 }
 
-static inline void showNotification(const char *notif, bool error)
+static void showNotification(bool error, const char *notif)
 {
     OSMessage msg;
     msg.message = MEMAllocFromDefaultHeap(sizeof(NOTIFICATION));
@@ -146,10 +147,21 @@ static inline void showNotification(const char *notif, bool error)
         return;
 
     static_cast<NOTIFICATION *>(msg.message)->error = error;
-    static_cast<NOTIFICATION *>(msg.message)->msg = notif;
+    strncpy(static_cast<NOTIFICATION *>(msg.message)->msg, notif, 1023);
+    static_cast<NOTIFICATION *>(msg.message)->msg[1023] = '\0';
 
     if(!OSSendMessage(&notifQueue, &msg, OS_MESSAGE_FLAGS_NONE))
         MEMFreeToDefaultHeap(msg.message);
+}
+
+static void showNotificationF(bool error, const char *notif, ...)
+{
+    char msg[1024];
+    va_list va;
+    va_start(va, notif);
+    vsnprintf(msg, 1023, notif, va);
+    va_end(va);
+    showNotification(error, msg);
 }
 
 static inline bool SetSystemTime(OSTime time)
@@ -169,58 +181,82 @@ static OSTime NTPGetTime()
     OSTime tick = 0;
 
     // Get host address by name
-    struct hostent* server = gethostbyname(NTP_SERVER);
-    if (server) {
+    struct addrinfo *addys = NULL;
+    struct addrinfo hints;
+    OSBlockSet(&hints, 0, sizeof(struct addrinfo));
+    hints.ai_family = AF_INET;
+    hints.ai_socktype = SOCK_DGRAM;
+    hints.ai_protocol = IPPROTO_UDP;
+    hints.ai_flags = AI_CANONNAME | AI_ADDRCONFIG;
+
+    // Create the packet
+    ntp_packet packet __attribute__((__aligned__(0x40)));
+
+    int sockfd = getaddrinfo(NTP_SERVER, "123", &hints, &addys);
+    if(!sockfd && addys != NULL)
+    {
         // Create a socket
-        int sockfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-        if (sockfd > -1) {
-            // Prepare socket address
-            struct sockaddr_in serv_addr;
-            OSBlockSet(&serv_addr, 0, sizeof(serv_addr));
-            serv_addr.sin_family = AF_INET;
-
-            // Copy the server's IP address to the server address structure.
-            OSBlockMove(&serv_addr.sin_addr.s_addr, server->h_addr, server->h_length, false);
-
-            // Convert the port number integer to network big-endian style and save it to the server address structure.
-            serv_addr.sin_port = htons(123); // UDP port
-
-            // Create the packet
-            ntp_packet packet __attribute__((__aligned__(0x40)));
+        for(struct addrinfo *addr = addys; addr != NULL; addr = addr->ai_next)
+        {
+            // Reset packet
             OSBlockSet(&packet, 0, sizeof(packet));
             // Set the first byte's bits to 00,001,011 for li = 0, vn = 1, and mode = 3.
             packet.li_vn_mode = (1 << 3) | MODE_CLIENT;
 
-            // Call up the server using its IP address and port number.
-            if (connect(sockfd, (struct sockaddr*) &serv_addr, sizeof(serv_addr)) == 0) {
-                // Send it the NTP packet it wants.
-                if (write(sockfd, &packet, sizeof(packet)) == sizeof(packet)) {
-                    // Wait and receive the packet back from the server.
-                    if (read(sockfd, &packet, sizeof(packet)) == sizeof(packet)) {
-                        // Basic validity check:
-                        // li != 11
-                        // stratum != 0
-                        // transmit timestamp != 0
-                        if ((packet.li_vn_mode & LI_UNSYNC) != LI_UNSYNC && (packet.li_vn_mode & MODE_MASK) == MODE_SERVER && packet.stratum != 0 && (packet.txTm_s | packet.txTm_f)) {
-                            // Adjust timestamp
-                            packet.txTm_s = ntohl(packet.txTm_s);
-                            packet.txTm_s -= NTP_TIMESTAMP_DELTA;
-                            // Convert timezone
-                            packet.txTm_s += timezoneOffset;
+            sockfd = socket(addr->ai_family, addr->ai_socktype, addr->ai_protocol);
+            if(sockfd != -1)
+            {
+                // Call up the server using its IP address and port number.
+                if(connect(sockfd, addr->ai_addr, addr->ai_addrlen) == 0)
+                {
+                    // Send it the NTP packet it wants.
+                    if(write(sockfd, &packet, sizeof(packet)) == sizeof(packet))
+                    {
+                        // Wait and receive the packet back from the server.
+                        if(read(sockfd, &packet, sizeof(packet)) == sizeof(packet))
+                        {
+                            // Basic validity check:
+                            // li != 11
+                            // stratum != 0
+                            // transmit timestamp != 0
+                            if((packet.li_vn_mode & LI_UNSYNC) != LI_UNSYNC && (packet.li_vn_mode & MODE_MASK) == MODE_SERVER && packet.stratum != 0 && (packet.txTm_s | packet.txTm_f))
+                            {
+                                // Adjust timestamp
+                                packet.txTm_s = ntohl(packet.txTm_s);
+                                packet.txTm_s -= NTP_TIMESTAMP_DELTA;
+                                // Convert timezone
+                                packet.txTm_s += timezoneOffset;
 
-                            // Convert seconds to ticks
-                            tick = OSSecondsToTicks(packet.txTm_s);
+                                // Convert seconds to ticks
+                                tick = OSSecondsToTicks(packet.txTm_s);
 
-                            // Convert fraction of seconds
-                            tick += OSNanosecondsToTicks((ntohl(packet.txTm_f) * 1000000000llu) >> 32);
+                                // Convert fraction of seconds
+                                tick += OSNanosecondsToTicks((ntohl(packet.txTm_f) * 1000000000llu) >> 32);
+                                close(sockfd);
+                                break;
+                            }
+
+                            showNotificationF(true, "SNTP Client: Got invalid reply from %s!", addr->ai_canonname);
                         }
+                        else
+                            showNotificationF(true, "SNTP Client: Error reading from %s: %s", addr->ai_canonname, strerror(errno));
                     }
+                    else
+                        showNotificationF(true, "SNTP Client: Error writing to %s: %s!", addr->ai_canonname, strerror(errno));
                 }
+                else
+                    showNotificationF(true, "SNTP Client: Error connecting to %s: %s", addr->ai_canonname, strerror(errno));
 
                 close(sockfd);
             }
+            else
+                showNotificationF(true, "SNTP Client: Error opening socket: %s", strerror(errno));
         }
+
+        freeaddrinfo(addys);
     }
+    else
+        showNotificationF(true, "SNTP Client: Error resolving host: %s", gai_strerror(sockfd));
 
     return tick;
 }
@@ -252,10 +288,7 @@ static int timeThreadMain(int argc, const char **argv)
         time = NTPGetTime(); // Connect to the time server.
         tmpTime = OSGetTime();
         if(time == 0)
-        {
-            showNotification("Error getting time from " NTP_SERVER "!", true);
             continue;
-        }
 
         tmpTime = static_cast<OSTime>(abs(time - tmpTime));
 
@@ -263,9 +296,9 @@ static int timeThreadMain(int argc, const char **argv)
             continue; // Time difference is within 250 milliseconds, no need to update.
 
         if(SetSystemTime(time))
-            showNotification("Time synced", false);
+            showNotification(false, "Time synced");
         else
-            showNotification("Error setting hardware clock!", true);
+            showNotification(true, "SNTP Client: Error setting hardware clock!");
     } while(1);
 }
 
@@ -297,12 +330,12 @@ static void saveTimezone(ConfigItemMultipleValues *item, uint32_t value)
     changeTimezone(nullptr, value);
 }
 
-static OSThread *startThread(const char *name, OSThreadEntryPointFn mainfunc, OSThreadAttributes attribs)
+static OSThread *startThread(const char *name, OSThreadEntryPointFn mainfunc, size_t stacksize, OSThreadAttributes attribs)
 {
-    OSThread *ost = static_cast<OSThread *>(MEMAllocFromDefaultHeapEx(sizeof(OSThread) + 0x1000, 8));
+    OSThread *ost = static_cast<OSThread *>(MEMAllocFromDefaultHeapEx(sizeof(OSThread) + stacksize, 8));
     if(ost != nullptr)
     {
-        if(OSCreateThread(ost, mainfunc, 0, nullptr, reinterpret_cast<uint8_t *>(ost) + (0x1000 + sizeof(OSThread)), 0x1000, 5, attribs))
+        if(OSCreateThread(ost, mainfunc, 0, nullptr, reinterpret_cast<uint8_t *>(ost) + stacksize + sizeof(OSThread), stacksize, 5, attribs))
         {
             OSSetThreadName(ost, name);
             OSResumeThread(ost);
@@ -343,8 +376,8 @@ ON_APPLICATION_START()
     OSInitMessageQueueEx(&notifQueue, notifs, NOTIF_QUEUE_SIZE, "SNTP Client Notifications");
     OSInitMessageQueueEx(&timeQueue, timeUpdates, TIME_QUEUE_SIZE, "SNTP Client Time Update Requests");
 
-    notifThread = startThread("SNTP Client Notification Thread", notifMain, OS_THREAD_ATTRIB_AFFINITY_CPU0);
-    timeThread = startThread("SNTP Client Time Update Thread", timeThreadMain, OS_THREAD_ATTRIB_AFFINITY_CPU2);
+    notifThread = startThread("SNTP Client Notification Thread", notifMain, 0x800, OS_THREAD_ATTRIB_AFFINITY_CPU0);
+    timeThread = startThread("SNTP Client Time Update Thread", timeThreadMain, 0x1000, OS_THREAD_ATTRIB_AFFINITY_CPU2);
 
     updateTime();
 }
@@ -437,7 +470,7 @@ WUPS_GET_CONFIG() {
     sysTimeHandle = WUPSConfigItemTime_AddToCategoryHandled(settings, preview, "sysTime", "Current SYS Time: Loading...");
     ntpTimeHandle = WUPSConfigItemTime_AddToCategoryHandled(settings, preview, "ntpTime", "Current NTP Time: Loading...");
     settingsThreadActive = true;
-    settingsThread = startThread("SNTP Client Settings Thread", settingsThreadMain, OS_THREAD_ATTRIB_AFFINITY_CPU1);
+    settingsThread = startThread("SNTP Client Settings Thread", settingsThreadMain, 0x4000, OS_THREAD_ATTRIB_AFFINITY_CPU1);
 
     return settings;
 }
