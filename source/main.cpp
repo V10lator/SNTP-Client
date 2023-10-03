@@ -6,6 +6,7 @@
 #include <cstdio>
 #include <cstring>
 
+#include <coreinit/atomic.h>
 #include <coreinit/memdefaultheap.h>
 #include <coreinit/memory.h>
 #include <coreinit/messagequeue.h>
@@ -67,7 +68,7 @@ static OSThread *timeThread = nullptr;
 static OSThread *notifThread = nullptr;
 static OSThread *settingsThread = nullptr;
 static volatile bool settingsThreadActive;
-static volatile bool fakePress = false;
+static volatile uint32_t fakePress = false;
 
 // From https://github.com/lettier/ntpclient/blob/master/source/c/main.c
 typedef struct
@@ -504,16 +505,8 @@ DECL_FUNCTION(int32_t, VPADRead, VPADChan chan, VPADStatus *buffers, uint32_t co
 {
     int32_t result = real_VPADRead(chan, buffers, count, outError);
 
-    if(settingsThreadActive && *outError == VPAD_READ_SUCCESS)
-    {
-        if(fakePress)
-        {
-            if(!buffers->trigger)
-                buffers->trigger = VPAD_BUTTON_Y;
-
-            fakePress = false;
-        }
-    }
+    if(settingsThreadActive && *outError == VPAD_READ_SUCCESS && OSCompareAndSwapAtomic(&fakePress, true, false) && !buffers->trigger)
+        buffers->trigger = VPAD_BUTTON_Y;
 
     return result;
 }
