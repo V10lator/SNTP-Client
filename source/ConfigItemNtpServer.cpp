@@ -53,7 +53,7 @@ extern "C" bool WUPSConfigItemNtpServer_AddToCategory(WUPSConfigCategoryHandle c
     if (item == nullptr)
         return false;
 
-    strncpy(item->defaultValue, defaultValue, 127);
+    strncpy(item->defaultValue, defaultValue, MAX_NTP_SERVER_LENTGH - 1);
     strcpy(item->value, item->defaultValue);
     item->callback     = (void *) callback;
 

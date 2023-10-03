@@ -1,13 +1,15 @@
 #include <wups.h>
 
+#define MAX_NTP_SERVER_LENTGH 32
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 typedef struct ConfigItemNtpServer {
     WUPSConfigItemHandle handle;
-    char defaultValue[128];
-    char value[128];
+    char defaultValue[MAX_NTP_SERVER_LENTGH];
+    char value[MAX_NTP_SERVER_LENTGH];
     void *callback;
 } ConfigItemNtpServer;
 
