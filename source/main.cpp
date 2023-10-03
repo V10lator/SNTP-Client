@@ -519,7 +519,7 @@ DECL_FUNCTION(int32_t, VPADRead, VPADChan chan, VPADStatus *buffers, uint32_t co
     int32_t result = real_VPADRead(chan, buffers, count, outError);
 
     if(settingsThreadActive && *outError == VPAD_READ_SUCCESS && OSCompareAndSwapAtomic(&fakePress, true, false) && !buffers->trigger)
-        buffers->trigger = VPAD_BUTTON_Y;
+        buffers->trigger = VPAD_BUTTON_MINUS;
 
     return result;
 }
@@ -536,7 +536,7 @@ DECL_FUNCTION(int32_t, KPADReadEx, KPADChan chan, KPADStatus *data, uint32_t siz
                 data->trigger = VPAD_BUTTON_MINUS;
         }
         else if(!data->classic.trigger)
-            data->classic.trigger = WPAD_CLASSIC_BUTTON_Y;
+            data->classic.trigger = WPAD_CLASSIC_BUTTON_MINUS;
     }
 
 
