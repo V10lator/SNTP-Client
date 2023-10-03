@@ -1,4 +1,5 @@
 #include "ConfigItemTime.h"
+#include <coreinit/atomic.h>
 #include <coreinit/memory.h>
 #include <coreinit/memdefaultheap.h>
 #include <wups.h>
@@ -26,22 +27,19 @@ bool WUPSConfigItemTime_isMovementAllowed(void *context) {
     return true;
 }
 
-int32_t WUPSConfigItemTime_getCurrentValueSelectedDisplay(void *context, char *out_buf, int32_t out_size) {
-    (void)context;
-    OSBlockSet(out_buf, 0, out_size);
-    return 0;
-}
-
 void WUPSConfigItemTime_restoreDefault(void *context) {
     (void)context;
 }
 
 void WUPSConfigItemTime_onSelected(void *context, bool isSelected) {
-    (void)context;
-    (void)isSelected;
+    auto *item = (ConfigItemTime *) context;
+    if(isSelected)
+        OSOrAtomic(item->ap, item->mask);
+    else
+        OSAndAtomic(item->ap, ~(item->mask));
 }
 
-extern "C" ConfigItemTime *WUPSConfigItemTime_AddToCategoryEx(WUPSConfigCategoryHandle cat, const char *configID, const char *displayName)
+extern "C" ConfigItemTime *WUPSConfigItemTime_AddToCategoryEx(WUPSConfigCategoryHandle cat, const char *configID, const char *displayName, volatile uint32_t *ap, uint32_t mask)
 {
     if(cat == 0)
         return nullptr;
@@ -50,9 +48,12 @@ extern "C" ConfigItemTime *WUPSConfigItemTime_AddToCategoryEx(WUPSConfigCategory
     if(item == nullptr)
         return nullptr;
 
+    item->ap = ap;
+    item->mask = mask;
+
     WUPSConfigCallbacks_t callbacks = {
             .getCurrentValueDisplay         = &WUPSConfigItemTime_getCurrentValueDisplay,
-            .getCurrentValueSelectedDisplay = &WUPSConfigItemTime_getCurrentValueSelectedDisplay,
+            .getCurrentValueSelectedDisplay = &WUPSConfigItemTime_getCurrentValueDisplay,
             .onSelected                     = &WUPSConfigItemTime_onSelected,
             .restoreDefault                 = &WUPSConfigItemTime_restoreDefault,
             .isMovementAllowed              = &WUPSConfigItemTime_isMovementAllowed,
@@ -77,12 +78,12 @@ void WUPSConfigItemTime_onDelete(void *context) {
     MEMFreeToDefaultHeap(context);
 }
 
-extern "C" ConfigItemTime *WUPSConfigItemTime_AddToCategory(WUPSConfigCategoryHandle cat, const char *configID, const char *displayName) {
-    return WUPSConfigItemTime_AddToCategoryEx(cat, configID, displayName);
+extern "C" ConfigItemTime *WUPSConfigItemTime_AddToCategory(WUPSConfigCategoryHandle cat, const char *configID, const char *displayName, volatile uint32_t *ap, uint32_t mask) {
+    return WUPSConfigItemTime_AddToCategoryEx(cat, configID, displayName, ap, mask);
 }
 
-extern "C" ConfigItemTime *WUPSConfigItemTime_AddToCategoryHandled(WUPSConfigHandle config, WUPSConfigCategoryHandle cat, const char *configID, const char *displayName) {
-    ConfigItemTime *ret = WUPSConfigItemTime_AddToCategory(cat, configID,displayName);
+extern "C" ConfigItemTime *WUPSConfigItemTime_AddToCategoryHandled(WUPSConfigHandle config, WUPSConfigCategoryHandle cat, const char *configID, const char *displayName, volatile uint32_t *ap, uint32_t mask) {
+    ConfigItemTime *ret = WUPSConfigItemTime_AddToCategory(cat, configID, displayName, ap, mask);
     if(ret == nullptr)
         WUPSConfig_Destroy(config);
 
