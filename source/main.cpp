@@ -14,6 +14,7 @@
 #include <coreinit/time.h>
 #include <nn/pdm.h>
 #include <notifications/notifications.h>
+#include <padscore/kpad.h>
 #include <vpad/input.h>
 #include <wups.h>
 #include <wups/config.h>
@@ -523,3 +524,22 @@ DECL_FUNCTION(int32_t, VPADRead, VPADChan chan, VPADStatus *buffers, uint32_t co
     return result;
 }
 WUPS_MUST_REPLACE(VPADRead, WUPS_LOADER_LIBRARY_VPAD, VPADRead);
+
+DECL_FUNCTION(int32_t, KPADReadEx, KPADChan chan, KPADStatus *data, uint32_t size, KPADError *error)
+{
+    int32_t result = real_KPADReadEx(chan, data, size, error);
+    if(settingsThreadActive && result > 0 && *error == KPAD_ERROR_OK && data->extensionType != 0xFF && OSCompareAndSwapAtomic(&fakePress, true, false))
+    {
+        if(data->extensionType == WPAD_EXT_CORE || data->extensionType == WPAD_EXT_NUNCHUK)
+        {
+            if(!data->trigger)
+                data->trigger = VPAD_BUTTON_MINUS;
+        }
+        else if(!data->classic.trigger)
+            data->classic.trigger = WPAD_CLASSIC_BUTTON_Y;
+    }
+
+
+    return result;
+}
+WUPS_MUST_REPLACE(KPADReadEx, WUPS_LOADER_LIBRARY_PADSCORE, KPADReadEx);
