@@ -13,10 +13,12 @@
 #include <coreinit/time.h>
 #include <nn/pdm.h>
 #include <notifications/notifications.h>
+#include <vpad/input.h>
 #include <wups.h>
 #include <wups/config.h>
 #include <wups/config/WUPSConfigItemBoolean.h>
 #include <wups/config/WUPSConfigItemMultipleValues.h>
+#include <wups/function_patching.h>
 
 #include "ConfigItemNtpServer.h"
 #include "ConfigItemTime.h"
@@ -65,6 +67,7 @@ static OSThread *timeThread = nullptr;
 static OSThread *notifThread = nullptr;
 static OSThread *settingsThread = nullptr;
 static volatile bool settingsThreadActive;
+static volatile bool fakePress = false;
 
 // From https://github.com/lettier/ntpclient/blob/master/source/c/main.c
 typedef struct
@@ -452,7 +455,8 @@ static int settingsThreadMain(int argc, const char **argv) {
         snprintf(timeString, 255, "Current SYS Time: %04d-%02d-%02d %02d:%02d:%02d:%04d:%04d\n", ct.tm_year, ct.tm_mon + 1, ct.tm_mday, ct.tm_hour, ct.tm_min, ct.tm_sec, ct.tm_msec, ct.tm_usec);
         WUPSConfigItem_SetDisplayName(sysTimeHandle->handle, timeString);
 
-        //TODO: Update screen without the user needing to press a button
+        // Update screen with a fake button press
+        fakePress = true;
 
         OSSleepTicks(OSSecondsToTicks(1));
     }
@@ -495,3 +499,22 @@ WUPS_CONFIG_CLOSED() {
         settingsThread = nullptr;
     }
 }
+
+DECL_FUNCTION(int32_t, VPADRead, VPADChan chan, VPADStatus *buffers, uint32_t count, VPADReadError *outError)
+{
+    int32_t result = real_VPADRead(chan, buffers, count, outError);
+
+    if(settingsThreadActive && *outError == VPAD_READ_SUCCESS)
+    {
+        if(fakePress)
+        {
+            if(!buffers->trigger)
+                buffers->trigger = VPAD_BUTTON_Y;
+
+            fakePress = false;
+        }
+    }
+
+    return result;
+}
+WUPS_MUST_REPLACE(VPADRead, WUPS_LOADER_LIBRARY_VPAD, VPADRead);
