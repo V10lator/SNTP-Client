@@ -9,6 +9,7 @@
 #include <coreinit/screen.h>
 #include <coreinit/thread.h>
 #include <coreinit/time.h>
+#include <padscore/kpad.h>
 #include <vpad/input.h>
 #include <wups.h>
 
@@ -214,6 +215,47 @@ static uint32_t getTextWidth(const wchar_t *string) {
     return (uint32_t) width;
 }
 
+
+static uint32_t mapClassicButtons(uint32_t buttonMap)
+{
+    uint32_t ret = 0;;
+
+    if(buttonMap & WPAD_CLASSIC_BUTTON_RIGHT)
+        ret |= VPAD_BUTTON_RIGHT;
+    if(buttonMap & WPAD_CLASSIC_BUTTON_LEFT)
+        ret |= VPAD_BUTTON_LEFT;
+    if(buttonMap & WPAD_CLASSIC_BUTTON_DOWN)
+        ret |= VPAD_BUTTON_DOWN;
+    if(buttonMap & WPAD_CLASSIC_BUTTON_UP)
+        ret |= VPAD_BUTTON_UP;
+    if(buttonMap & WPAD_CLASSIC_BUTTON_A)
+        ret |= VPAD_BUTTON_A;
+    if(buttonMap & WPAD_CLASSIC_BUTTON_B)
+        ret |= VPAD_BUTTON_B;
+
+    return ret;
+}
+
+static uint32_t mapWiiButtons(uint32_t buttonMap)
+{
+    uint32_t ret = 0;;
+
+    if(buttonMap & WPAD_BUTTON_RIGHT)
+        ret |= VPAD_BUTTON_RIGHT;
+    if(buttonMap & WPAD_BUTTON_LEFT)
+        ret |= VPAD_BUTTON_LEFT;
+    if(buttonMap & WPAD_BUTTON_DOWN)
+        ret |= VPAD_BUTTON_DOWN;
+    if(buttonMap & WPAD_BUTTON_UP)
+        ret |= VPAD_BUTTON_UP;
+    if(buttonMap & WPAD_BUTTON_A)
+        ret |= VPAD_BUTTON_A;
+    if(buttonMap & WPAD_BUTTON_B)
+        ret |= VPAD_BUTTON_B;
+
+    return ret;
+}
+
 void drawKeyboard(uint32_t x, uint32_t y, uint32_t z, wchar_t *str, uint32_t maxLength)
 {
     OSScreenClearBufferEx(SCREEN_DRC, COLOR_BACKGROUND.color);
@@ -303,6 +345,9 @@ void renderKeyboard(char *str, uint32_t maxLength)
     VPADStatus vpad;
     VPADReadError verror;
 
+    KPADStatus kpad{};
+    KPADError kerror;
+
     int32_t x = 0;
     int32_t y = 0;
     bool redraw = true;
@@ -311,95 +356,99 @@ void renderKeyboard(char *str, uint32_t maxLength)
     do
     {
         VPADRead(VPAD_CHAN_0, &vpad, 1, &verror);
-        if(verror == VPAD_READ_SUCCESS)
+        if(verror != VPAD_READ_SUCCESS)
+            vpad.trigger = 0;
+
+        for(int i = 0; i < 4; i++)
+            if(KPADReadEx((KPADChan)i, &kpad, 1, &kerror) > 0 && kerror == KPAD_ERROR_OK && kpad.extensionType != 0xFF)
+                vpad.trigger |= kpad.extensionType == WPAD_EXT_CORE || kpad.extensionType == WPAD_EXT_NUNCHUK ? mapWiiButtons(kpad.trigger) : mapClassicButtons(kpad.classic.trigger);
+
+        if(vpad.trigger & VPAD_BUTTON_RIGHT)
         {
-            if(vpad.trigger & VPAD_BUTTON_RIGHT)
-            {
-                if(++x > 9)
-                    x = 0;
+            if(++x > 9)
+                x = 0;
 
-                redraw = true;
-            }
-            if(vpad.trigger & VPAD_BUTTON_LEFT)
-            {
-                if(--x < 0)
-                    x = 9;
+            redraw = true;
+        }
+        if(vpad.trigger & VPAD_BUTTON_LEFT)
+        {
+            if(--x < 0)
+                x = 9;
 
-                redraw = true;
-            }
-            if(vpad.trigger& VPAD_BUTTON_DOWN)
-            {
-                if(++y > 3)
-                    y = 0;
+            redraw = true;
+        }
+        if(vpad.trigger& VPAD_BUTTON_DOWN)
+        {
+            if(++y > 3)
+                y = 0;
 
-                redraw = true;
-            }
-            if(vpad.trigger & VPAD_BUTTON_UP)
-            {
-                if(--y < 0)
-                    y = 3;
+            redraw = true;
+        }
+        if(vpad.trigger & VPAD_BUTTON_UP)
+        {
+            if(--y < 0)
+                y = 3;
 
-                redraw = true;
-            }
-            if(vpad.trigger & VPAD_BUTTON_A)
-            {
-                trigger = true;
-                redraw = true;
-            }
-            if(vpad.trigger & VPAD_BUTTON_B)
-            {
-                if(--size == -1)
-                    break;
+            redraw = true;
+        }
+        if(vpad.trigger & VPAD_BUTTON_A)
+        {
+            trigger = true;
+            redraw = true;
+        }
+        if(vpad.trigger & VPAD_BUTTON_B)
+        {
+            if(--size == -1)
+                break;
 
-                wstr[size] = 0;
-                redraw = true;
-            }
+            wstr[size] = 0;
+            redraw = true;
+        }
 
-            if(redraw)
+        if(redraw)
+        {
+            uint32_t z = (y * 10) + x;
+            if(trigger)
             {
-                uint32_t z = (y * 10) + x;
-                if(trigger)
+                if(z < (4 * 10) - 3)
                 {
-                    if(z < (4 * 10) - 3)
+                    if(size < maxLength - 1)
                     {
-                        if(size < maxLength - 1)
-                        {
-                            wstr[size] = keymap[z];
-                            if(z != 29 && z > 9)
-                                wstr[size] += 32;
+                        wstr[size] = keymap[z];
+                        if(z != 29 && z > 9)
+                            wstr[size] += 32;
 
-                            ++size;
-                        }
+                        ++size;
                     }
-                    else if(z == (4 * 10) - 1)
+                }
+                else if(z == (4 * 10) - 1)
+                {
+                    if(size)
                     {
-                        if(size)
-                        {
-                            for(uint32_t i = 0; i < size; ++i)
-                                str[i] = wstr[i];
+                        for(uint32_t i = 0; i < size; ++i)
+                            str[i] = wstr[i];
 
-                            str[size] = '\0';
-                        }
-                        else
-                            strcpy(str, "pool.ntp.org");
+                        str[size] = '\0';
+                    }
+                    else
+                        strcpy(str, "pool.ntp.org");
 
-                        break;
-                    }
-                    else if(z == (4 * 10) - 2)
-                    {
-                        // TODO
-                    }
-                    else if(z == (4 * 10) - 3)
-                    {
-                        // TODO
-                    }
-
-                    trigger = false;
+                    break;
+                }
+                else if(z == (4 * 10) - 2)
+                {
+                    // TODO
+                }
+                else if(z == (4 * 10) - 3)
+                {
+                    // TODO
                 }
 
-                drawKeyboard(x, y, z, wstr, maxLength);
-                redraw = false;
+                trigger = false;
             }
+
+            drawKeyboard(x, y, z, wstr, maxLength);
+            redraw = false;
         }
 
         OSSleepTicks(OSMicrosecondsToTicks(20));
