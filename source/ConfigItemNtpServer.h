@@ -1,3 +1,4 @@
+#pragma once
 #include <wups.h>
 
 #define MAX_NTP_SERVER_LENTGH 32

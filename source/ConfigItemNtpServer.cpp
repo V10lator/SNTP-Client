@@ -1,4 +1,5 @@
 #include "ConfigItemNtpServer.h"
+#include "kbd.h"
 #include <coreinit/memdefaultheap.h>
 #include <cstring>
 #include <wups.h>
@@ -18,12 +19,13 @@ bool WUPSConfigItemNtpServer_callCallback(void *context) {
     return false;
 }
 
+#include <coreinit/thread.h>
+#include <coreinit/time.h>
+
 void WUPSConfigItemNtpServer_onButtonPressed(void *context, WUPSConfigButtons buttons) {
     auto *item = (ConfigItemNtpServer *) context;
     if(buttons & WUPS_CONFIG_BUTTON_A)
-    {
-        //TODO
-    }
+        renderKeyboard(item->value, MAX_NTP_SERVER_LENTGH);
 }
 
 bool WUPSConfigItemNtpServer_isMovementAllowed(void *context) {

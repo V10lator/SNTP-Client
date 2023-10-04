@@ -1,3 +1,4 @@
+#pragma once
 #include <wups.h>
 
 #ifdef __cplusplus
