@@ -233,6 +233,15 @@ static uint32_t mapClassicButtons(uint32_t buttonMap)
     if(buttonMap & WPAD_CLASSIC_BUTTON_B)
         ret |= VPAD_BUTTON_B;
 
+    if(buttonMap & WPAD_CLASSIC_STICK_L_EMULATION_RIGHT)
+        ret |= VPAD_BUTTON_RIGHT;
+    if(buttonMap & WPAD_CLASSIC_STICK_L_EMULATION_LEFT)
+        ret |= VPAD_BUTTON_LEFT;
+    if(buttonMap & WPAD_CLASSIC_STICK_L_EMULATION_DOWN)
+        ret |= VPAD_BUTTON_DOWN;
+    if(buttonMap & WPAD_CLASSIC_STICK_L_EMULATION_UP)
+        ret |= VPAD_BUTTON_UP;
+
     return ret;
 }
 
@@ -356,7 +365,18 @@ void renderKeyboard(char *str, uint32_t maxLength)
     do
     {
         VPADRead(VPAD_CHAN_0, &vpad, 1, &verror);
-        if(verror != VPAD_READ_SUCCESS)
+        if(verror == VPAD_READ_SUCCESS)
+        {
+            if(vpad.trigger & VPAD_STICK_L_EMULATION_RIGHT)
+                vpad.trigger |= VPAD_BUTTON_RIGHT;
+            if(vpad.trigger & VPAD_STICK_L_EMULATION_LEFT)
+                vpad.trigger |= VPAD_BUTTON_LEFT;
+            if(vpad.trigger & VPAD_STICK_L_EMULATION_DOWN)
+                vpad.trigger |= VPAD_BUTTON_DOWN;
+            if(vpad.trigger & VPAD_STICK_L_EMULATION_UP)
+                vpad.trigger |= VPAD_BUTTON_UP;
+        }
+        else
             vpad.trigger = 0;
 
         for(int i = 0; i < 4; i++)
