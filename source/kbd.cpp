@@ -434,7 +434,12 @@ void renderKeyboard(char *str, uint32_t maxLength)
             }
         }
         else
-            --cooldown;
+        {
+            if(vpad.trigger || cooldown == 26)
+                --cooldown;
+            else
+                cooldown = 0;
+        }
 
         if(cooldown == 25)
         {
