@@ -32,21 +32,21 @@ void WUPSConfigItemTime_restoreDefault(void *context) {
 }
 
 void WUPSConfigItemTime_onSelected(void *context, bool isSelected) {
-    auto *item = (ConfigItemTime *) context;
+    ConfigItemTime *item = (ConfigItemTime *) context;
     if(isSelected)
         OSOrAtomic(item->ap, item->mask);
     else
         OSAndAtomic(item->ap, ~(item->mask));
 }
 
-extern "C" ConfigItemTime *WUPSConfigItemTime_AddToCategoryEx(WUPSConfigCategoryHandle cat, const char *configID, const char *displayName, volatile uint32_t *ap, uint32_t mask)
+ConfigItemTime *WUPSConfigItemTime_AddToCategoryEx(WUPSConfigCategoryHandle cat, const char *configID, const char *displayName, volatile uint32_t *ap, uint32_t mask)
 {
     if(cat == 0)
-        return nullptr;
+        return NULL;
 
-    auto *item = (ConfigItemTime *) MEMAllocFromDefaultHeap(sizeof(ConfigItemTime));
-    if(item == nullptr)
-        return nullptr;
+    ConfigItemTime *item = (ConfigItemTime *) MEMAllocFromDefaultHeap(sizeof(ConfigItemTime));
+    if(item == NULL)
+        return NULL;
 
     item->ap = ap;
     item->mask = mask;
@@ -63,12 +63,12 @@ extern "C" ConfigItemTime *WUPSConfigItemTime_AddToCategoryEx(WUPSConfigCategory
 
     if(WUPSConfigItem_Create(&item->handle, configID, displayName, callbacks, item) < 0) {
         MEMFreeToDefaultHeap(item);
-        return nullptr;
+        return NULL;
     }
 
     if(WUPSConfigCategory_AddItem(cat, item->handle) < 0) {
         WUPSConfigItem_Destroy(item->handle);
-        return nullptr;
+        return NULL;
     }
 
     return item;
@@ -78,13 +78,13 @@ void WUPSConfigItemTime_onDelete(void *context) {
     MEMFreeToDefaultHeap(context);
 }
 
-extern "C" ConfigItemTime *WUPSConfigItemTime_AddToCategory(WUPSConfigCategoryHandle cat, const char *configID, const char *displayName, volatile uint32_t *ap, uint32_t mask) {
+ConfigItemTime *WUPSConfigItemTime_AddToCategory(WUPSConfigCategoryHandle cat, const char *configID, const char *displayName, volatile uint32_t *ap, uint32_t mask) {
     return WUPSConfigItemTime_AddToCategoryEx(cat, configID, displayName, ap, mask);
 }
 
-extern "C" ConfigItemTime *WUPSConfigItemTime_AddToCategoryHandled(WUPSConfigHandle config, WUPSConfigCategoryHandle cat, const char *configID, const char *displayName, volatile uint32_t *ap, uint32_t mask) {
+ConfigItemTime *WUPSConfigItemTime_AddToCategoryHandled(WUPSConfigHandle config, WUPSConfigCategoryHandle cat, const char *configID, const char *displayName, volatile uint32_t *ap, uint32_t mask) {
     ConfigItemTime *ret = WUPSConfigItemTime_AddToCategory(cat, configID, displayName, ap, mask);
-    if(ret == nullptr)
+    if(ret == NULL)
         WUPSConfig_Destroy(config);
 
     return ret;
