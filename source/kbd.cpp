@@ -23,15 +23,15 @@ static bool isBackBuffer;
 static SFT pFont = {};
 
 union Color {
-    explicit Color(uint32_t color) {
-        this->color = color;
+    explicit Color(uint32_t c) {
+        this->color = c;
     }
 
-    Color(uint8_t r, uint8_t g, uint8_t b, uint8_t a) {
-        this->r = r;
-        this->g = g;
-        this->b = b;
-        this->a = a;
+    Color(uint8_t ur, uint8_t ug, uint8_t ub, uint8_t ua) {
+        this->r = ur;
+        this->g = ug;
+        this->b = ub;
+        this->a = ua;
     }
 
     uint32_t color{};
@@ -83,7 +83,7 @@ static void drawPixel(uint32_t x, uint32_t y, uint8_t r, uint8_t g, uint8_t b, u
     if(a == 0)
         return;
 
-    float opacity;
+    float opacity = 0.0f;
 
     // put pixel in the drc buffer
     uint32_t i = (x + y * DRC_WIDTH) * 4;
@@ -97,9 +97,11 @@ static void drawPixel(uint32_t x, uint32_t y, uint8_t r, uint8_t g, uint8_t b, u
             drcBuffer[++i] = b;
         } else {
             opacity = a / 255.0f;
-            drcBuffer[i]   = r * opacity + drcBuffer[i] * (1 - opacity);
-            drcBuffer[++i] = g * opacity + drcBuffer[i + 1] * (1 - opacity);
-            drcBuffer[++i] = b * opacity + drcBuffer[i + 2] * (1 - opacity);
+            drcBuffer[i] = r * opacity + drcBuffer[i] * (1 - opacity);
+            ++i;
+            drcBuffer[i] = g * opacity + drcBuffer[i + 1] * (1 - opacity);
+            ++i;
+            drcBuffer[i] = b * opacity + drcBuffer[i + 2] * (1 - opacity);
         }
     }
 
@@ -113,7 +115,7 @@ static void drawPixel(uint32_t x, uint32_t y, uint8_t r, uint8_t g, uint8_t b, u
     // scale and put pixel in the tv buffer
     for (uint32_t yy = (y * scale); yy < ((y * scale) + (uint32_t) scale); yy++) {
         for (uint32_t xx = (x * scale); xx < ((x * scale) + (uint32_t) scale); xx++) {
-            uint32_t i = (xx + yy * USED_TV_WIDTH) * 4;
+            i = (xx + yy * USED_TV_WIDTH) * 4;
             if (i + 3 < tvSize / 2) {
                 if (isBackBuffer) {
                     i += tvSize / 2;
@@ -123,9 +125,11 @@ static void drawPixel(uint32_t x, uint32_t y, uint8_t r, uint8_t g, uint8_t b, u
                     tvBuffer[++i] = g;
                     tvBuffer[++i] = b;
                 } else {
-                    tvBuffer[i]   = r * opacity + tvBuffer[i] * (1 - opacity);
-                    tvBuffer[++i] = g * opacity + tvBuffer[i + 1] * (1 - opacity);
-                    tvBuffer[++i] = b * opacity + tvBuffer[i + 2] * (1 - opacity);
+                    tvBuffer[i] = r * opacity + tvBuffer[i] * (1 - opacity);
+                    ++i;
+                    tvBuffer[i] = g * opacity + tvBuffer[i + 1] * (1 - opacity);
+                    ++i;
+                    tvBuffer[i] = b * opacity + tvBuffer[i + 2] * (1 - opacity);
                 }
             }
         }
@@ -265,7 +269,7 @@ static uint32_t mapWiiButtons(uint32_t buttonMap)
     return ret;
 }
 
-void drawKeyboard(uint32_t x, uint32_t y, uint32_t z, wchar_t *str, uint32_t maxLength)
+void drawKeyboard(uint32_t x, uint32_t y, wchar_t *str, uint32_t maxLength)
 {
     OSScreenClearBufferEx(SCREEN_DRC, COLOR_BACKGROUND.color);
     OSScreenClearBufferEx(SCREEN_TV, COLOR_BACKGROUND.color);
@@ -422,7 +426,7 @@ void renderKeyboard(char *str, uint32_t maxLength)
             }
             if(vpad.trigger & VPAD_BUTTON_B)
             {
-                if(--size == -1)
+                if(--size == (uint32_t)-1)
                     break;
 
                 wstr[size] = 0;
@@ -474,7 +478,7 @@ void renderKeyboard(char *str, uint32_t maxLength)
                 trigger = false;
             }
 
-            drawKeyboard(x, y, z, wstr, maxLength);
+            drawKeyboard(x, y, wstr, maxLength);
         }
 
         OSSleepTicks(OSMillisecondsToTicks(20));
