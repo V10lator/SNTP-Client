@@ -218,7 +218,7 @@ static uint32_t getTextWidth(const wchar_t *string) {
 
 static uint32_t mapClassicButtons(uint32_t buttonMap)
 {
-    uint32_t ret = 0;;
+    uint32_t ret = 0;
 
     if(buttonMap & WPAD_CLASSIC_BUTTON_RIGHT)
         ret |= VPAD_BUTTON_RIGHT;
@@ -247,7 +247,7 @@ static uint32_t mapClassicButtons(uint32_t buttonMap)
 
 static uint32_t mapWiiButtons(uint32_t buttonMap)
 {
-    uint32_t ret = 0;;
+    uint32_t ret = 0;
 
     if(buttonMap & WPAD_BUTTON_RIGHT)
         ret |= VPAD_BUTTON_RIGHT;
@@ -359,7 +359,7 @@ void renderKeyboard(char *str, uint32_t maxLength)
 
     int32_t x = 0;
     int32_t y = 0;
-    bool redraw = true;
+    uint32_t cooldown = 26;
     bool trigger = false;
 
     do
@@ -367,6 +367,8 @@ void renderKeyboard(char *str, uint32_t maxLength)
         VPADRead(VPAD_CHAN_0, &vpad, 1, &verror);
         if(verror == VPAD_READ_SUCCESS)
         {
+            vpad.trigger |= vpad.hold;
+
             if(vpad.trigger & VPAD_STICK_L_EMULATION_RIGHT)
                 vpad.trigger |= VPAD_BUTTON_RIGHT;
             if(vpad.trigger & VPAD_STICK_L_EMULATION_LEFT)
@@ -381,51 +383,56 @@ void renderKeyboard(char *str, uint32_t maxLength)
 
         for(int i = 0; i < 4; i++)
             if(KPADReadEx((KPADChan)i, &kpad, 1, &kerror) > 0 && kerror == KPAD_ERROR_OK && kpad.extensionType != 0xFF)
-                vpad.trigger |= kpad.extensionType == WPAD_EXT_CORE || kpad.extensionType == WPAD_EXT_NUNCHUK ? mapWiiButtons(kpad.trigger) : mapClassicButtons(kpad.classic.trigger);
+                vpad.trigger |= kpad.extensionType == WPAD_EXT_CORE || kpad.extensionType == WPAD_EXT_NUNCHUK ? mapWiiButtons(kpad.trigger & kpad.hold) : mapClassicButtons(kpad.classic.trigger & kpad.classic.hold);
 
-        if(vpad.trigger & VPAD_BUTTON_RIGHT)
+        if(!cooldown)
         {
-            if(++x > 9)
-                x = 0;
+            if(vpad.trigger & VPAD_BUTTON_RIGHT)
+            {
+                if(++x > 9)
+                    x = 0;
 
-            redraw = true;
-        }
-        if(vpad.trigger & VPAD_BUTTON_LEFT)
-        {
-            if(--x < 0)
-                x = 9;
+                cooldown = 25;
+            }
+            if(vpad.trigger & VPAD_BUTTON_LEFT)
+            {
+                if(--x < 0)
+                    x = 9;
 
-            redraw = true;
-        }
-        if(vpad.trigger& VPAD_BUTTON_DOWN)
-        {
-            if(++y > 3)
-                y = 0;
+                cooldown = 25;
+            }
+            if(vpad.trigger& VPAD_BUTTON_DOWN)
+            {
+                if(++y > 3)
+                    y = 0;
 
-            redraw = true;
-        }
-        if(vpad.trigger & VPAD_BUTTON_UP)
-        {
-            if(--y < 0)
-                y = 3;
+                cooldown = 25;
+            }
+            if(vpad.trigger & VPAD_BUTTON_UP)
+            {
+                if(--y < 0)
+                    y = 3;
 
-            redraw = true;
-        }
-        if(vpad.trigger & VPAD_BUTTON_A)
-        {
-            trigger = true;
-            redraw = true;
-        }
-        if(vpad.trigger & VPAD_BUTTON_B)
-        {
-            if(--size == -1)
-                break;
+                cooldown = 25;
+            }
+            if(vpad.trigger & VPAD_BUTTON_A)
+            {
+                trigger = true;
+                cooldown = 25;
+            }
+            if(vpad.trigger & VPAD_BUTTON_B)
+            {
+                if(--size == -1)
+                    break;
 
-            wstr[size] = 0;
-            redraw = true;
+                wstr[size] = 0;
+                cooldown = 25;
+            }
         }
+        else
+            --cooldown;
 
-        if(redraw)
+        if(cooldown == 25)
         {
             uint32_t z = (y * 10) + x;
             if(trigger)
@@ -468,10 +475,9 @@ void renderKeyboard(char *str, uint32_t maxLength)
             }
 
             drawKeyboard(x, y, z, wstr, maxLength);
-            redraw = false;
         }
 
-        OSSleepTicks(OSMicrosecondsToTicks(20));
+        OSSleepTicks(OSMillisecondsToTicks(20));
     } while(1);
 
     sft_freefont(pFont.font);
