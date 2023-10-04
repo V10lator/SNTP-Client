@@ -45,7 +45,7 @@
 // Important plugin information.
 WUPS_PLUGIN_NAME("SNTP Client");
 WUPS_PLUGIN_DESCRIPTION("A plugin that synchronizes a Wii U's clock with SNTP.");
-WUPS_PLUGIN_VERSION("v1.15");
+WUPS_PLUGIN_VERSION("v1.16");
 WUPS_PLUGIN_AUTHOR("Nightkingale & V10lator");
 WUPS_PLUGIN_LICENSE("MIT");
 
