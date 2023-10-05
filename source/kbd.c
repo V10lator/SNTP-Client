@@ -43,7 +43,7 @@ typedef struct
 #define COLOR_BLUE       ((Color){ .r =  52, .g = 120, .b = 228, .a = 255 })
 #define FONT_SIZE 24
 
-static char keymap[(10 * 4) - 3] = {
+static const char keymap[(10 * 4) - 3] = {
     '1', '2', '3', '4', '5', '6', '7', '8', '9', '0',
     'Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P',
     'A', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L', '.',
