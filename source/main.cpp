@@ -395,8 +395,8 @@ ON_APPLICATION_START()
     OSInitMessageQueueEx(&notifQueue, notifs, NOTIF_QUEUE_SIZE, "SNTP Client Notifications");
     OSInitMessageQueueEx(&timeQueue, timeUpdates, TIME_QUEUE_SIZE, "SNTP Client Time Update Requests");
 
-    notifThread = startThread("SNTP Client Notification Thread", notifMain, 0x800, OS_THREAD_ATTRIB_AFFINITY_CPU0);
-    timeThread = startThread("SNTP Client Time Update Thread", timeThreadMain, 0x1000, OS_THREAD_ATTRIB_AFFINITY_CPU2);
+    notifThread = startThread("SNTP Client Notification Thread", notifMain, 0x2000, OS_THREAD_ATTRIB_AFFINITY_CPU0);
+    timeThread = startThread("SNTP Client Time Update Thread", timeThreadMain, 0x2000, OS_THREAD_ATTRIB_AFFINITY_CPU2);
 
     updateTime();
 }
