@@ -1,3 +1,4 @@
+#include "ConfigItemNtpServer.h"
 #include "kbd.h"
 #include "schrift.h"
 #include <stdbool.h>
@@ -14,11 +15,11 @@
 #include <vpad/input.h>
 #include <wups.h>
 
-uint8_t *tvBuffer;
-uint8_t *drcBuffer;
+static uint8_t *tvBuffer;
+static uint8_t *drcBuffer;
 
-uint32_t tvSize;
-uint32_t drcSize;
+static uint32_t tvSize;
+static uint32_t drcSize;
 
 static bool isBackBuffer;
 static SFT pFont;
@@ -263,18 +264,18 @@ static uint32_t mapWiiButtons(uint32_t buttonMap)
     return ret;
 }
 
-static void drawKeyboard(uint32_t x, uint32_t y, wchar_t *str, uint32_t maxLength)
+static void drawKeyboard(uint32_t x, uint32_t y, wchar_t *str)
 {
     OSScreenClearBufferEx(SCREEN_DRC, colorToOSScreen(COLOR_BACKGROUND));
     OSScreenClearBufferEx(SCREEN_TV, colorToOSScreen(COLOR_BACKGROUND));
 
     drawRectFilled(8 + 3 + (x * (STEP + 3)), SCREEN_HEIGHT - 8 - 5 - (44 * 4) + 3 + (y * 44), STEP, 44 - 3, COLOR_BLUE);
 
-    wchar_t buf[maxLength];
-    for(y = 0; y < maxLength - 1; ++y)
+    wchar_t buf[MAX_NTP_SERVER_LENTGH];
+    for(y = 0; y < MAX_NTP_SERVER_LENTGH - 1; ++y)
         buf[y] = 'm';
 
-    buf[maxLength - 1] = 0;
+    buf[MAX_NTP_SERVER_LENTGH - 1] = 0;
     y = getTextWidth(buf);
     x = (SCREEN_WIDTH / 2) - 8 - 3 - (y / 2),
     drawRectFilled(x, (SCREEN_HEIGHT / 2) - ((44 * 5) / 2) - (44 / 2), y + 16, 3, COLOR_BLUE);
@@ -314,7 +315,7 @@ static void drawKeyboard(uint32_t x, uint32_t y, wchar_t *str, uint32_t maxLengt
     isBackBuffer = !isBackBuffer;
 }
 
-void renderKeyboard(char *str, uint32_t maxLength)
+void renderKeyboard(char *str)
 {
     void *font = NULL;
     uint32_t size = 0;
@@ -340,8 +341,8 @@ void renderKeyboard(char *str, uint32_t maxLength)
     // restore the pixel we used for checking
     *(uint32_t *) tvBuffer = size;
 
-    wchar_t wstr[maxLength];
-    OSBlockSet(wstr, 0, sizeof(wchar_t) * maxLength);
+    wchar_t wstr[MAX_NTP_SERVER_LENTGH];
+    OSBlockSet(wstr, 0, sizeof(wchar_t) * MAX_NTP_SERVER_LENTGH);
     size = strlen(str);
     for(uint32_t i = 0; i < size; i++)
         wstr[i] = str[i];
@@ -439,7 +440,7 @@ void renderKeyboard(char *str, uint32_t maxLength)
             {
                 if(z < (4 * 10) - 3)
                 {
-                    if(size < maxLength - 1)
+                    if(size < MAX_NTP_SERVER_LENTGH - 1)
                     {
                         wstr[size] = keymap[z];
                         if(z != 29 && z > 9)
@@ -474,7 +475,7 @@ void renderKeyboard(char *str, uint32_t maxLength)
                 trigger = false;
             }
 
-            drawKeyboard(x, y, wstr, maxLength);
+            drawKeyboard(x, y, wstr);
         }
 
         OSSleepTicks(OSMillisecondsToTicks(20));

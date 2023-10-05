@@ -24,7 +24,7 @@ bool WUPSConfigItemNtpServer_callCallback(void *context) {
 void WUPSConfigItemNtpServer_onButtonPressed(void *context, WUPSConfigButtons buttons) {
     ConfigItemNtpServer *item = (ConfigItemNtpServer *) context;
     if(buttons & WUPS_CONFIG_BUTTON_A)
-        renderKeyboard(item->value, MAX_NTP_SERVER_LENTGH);
+        renderKeyboard(item->value);
 }
 
 bool WUPSConfigItemNtpServer_isMovementAllowed(void *context) {
