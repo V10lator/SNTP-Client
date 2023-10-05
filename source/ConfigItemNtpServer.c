@@ -6,7 +6,8 @@
 
 int32_t WUPSConfigItemNtpServer_getCurrentValueDisplay(void *context, char *out_buf, int32_t out_size) {
     ConfigItemNtpServer *item = (ConfigItemNtpServer *) context;
-    strncpy(out_buf, item->value, out_size - 1);
+    strncpy(out_buf, item->value, out_size - 2);
+    out_buf[--out_size] = '\0';
     return 0;
 }
 
