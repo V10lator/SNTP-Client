@@ -282,9 +282,8 @@ static void drawKeyboard(uint32_t x, uint32_t y, const wchar_t *str, uint32_t cu
     for(x = 0; x < cursor; ++x)
         buf[x] = str[x];
 
-    buf[cursor] = ' ';
+    buf[x] = ' ';
 
-    x = cursor;
     if(str[x] != 0)
     {
         for(; str[x] != 0; ++x)
