@@ -52,23 +52,23 @@ WUPS_PLUGIN_LICENSE("MIT");
 WUPS_USE_WUT_DEVOPTAB();
 WUPS_USE_STORAGE("SNTP Client");
 
-static bool enabledSync = true;
+static volatile bool enabledSync = true;
 static volatile char ntp_server[MAX_NTP_SERVER_LENTGH] = "pool.ntp.org";
 static int32_t timezone = DEFAULT_TIMEZONE;
 static volatile int32_t timezoneOffset;
 
-static ConfigItemTime *updTimeHandle;
-static ConfigItemTime *sysTimeHandle;
-static ConfigItemTime *ntpTimeHandle;
+static volatile ConfigItemTime *updTimeHandle;
+static volatile ConfigItemTime *sysTimeHandle;
+static volatile ConfigItemTime *ntpTimeHandle;
 static volatile uint32_t previewMask;
 
-static OSMessageQueue timeQueue;
 static OSMessageQueue notifQueue;
-static OSMessage timeUpdates[TIME_QUEUE_SIZE];
+static OSMessageQueue timeQueue;
 static OSMessage notifs[NOTIF_QUEUE_SIZE];
+static OSMessage timeUpdates[TIME_QUEUE_SIZE];
 
-static OSThread *timeThread = nullptr;
 static OSThread *notifThread = nullptr;
+static OSThread *timeThread = nullptr;
 static OSThread *settingsThread = nullptr;
 static volatile bool settingsThreadActive;
 static volatile uint32_t fakePress = false;
@@ -375,7 +375,7 @@ INITIALIZE_PLUGIN() {
     WUPSStorageError storageRes = WUPS_OpenStorage();
     // Check if the plugin's settings have been saved before.
     if(storageRes == WUPS_STORAGE_ERROR_SUCCESS) {
-        if((storageRes = WUPS_GetBool(nullptr, SYNCING_ENABLED_CONFIG_ID, &enabledSync)) == WUPS_STORAGE_ERROR_NOT_FOUND)
+        if((storageRes = WUPS_GetBool(nullptr, SYNCING_ENABLED_CONFIG_ID, (bool *)&enabledSync)) == WUPS_STORAGE_ERROR_NOT_FOUND)
             WUPS_StoreBool(nullptr, SYNCING_ENABLED_CONFIG_ID, enabledSync);
 
         if((storageRes = WUPS_GetInt(nullptr, TIMEZONE_CONFIG_ID, &timezone)) == WUPS_STORAGE_ERROR_NOT_FOUND)
