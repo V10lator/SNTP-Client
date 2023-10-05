@@ -1,10 +1,11 @@
 #include "kbd.h"
 #include "schrift.h"
-#include <cstdbool>
-#include <cstdint>
-#include <cstdlib>
-#include <cstring>
-#include <memory>
+#include <stdbool.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
+#include <memory.h>
+#include <coreinit/memdefaultheap.h>
 #include <coreinit/memory.h>
 #include <coreinit/screen.h>
 #include <coreinit/thread.h>
@@ -20,38 +21,25 @@ uint32_t tvSize;
 uint32_t drcSize;
 
 static bool isBackBuffer;
-static SFT pFont = {};
+static SFT pFont;
 
-union Color {
-    explicit Color(uint32_t c) {
-        this->color = c;
-    }
-
-    Color(uint8_t ur, uint8_t ug, uint8_t ub, uint8_t ua) {
-        this->r = ur;
-        this->g = ug;
-        this->b = ub;
-        this->a = ua;
-    }
-
-    uint32_t color{};
-    struct {
-        uint8_t r;
-        uint8_t g;
-        uint8_t b;
-        uint8_t a;
-    };
-};
+typedef struct
+{
+    uint8_t r;
+    uint8_t g;
+    uint8_t b;
+    uint8_t a;
+} Color;
 
 #define SCREEN_WIDTH  854
 #define SCREEN_HEIGHT 480
 #define TV_WIDTH  0x500
 #define DRC_WIDTH 0x380
 #define STEP ((SCREEN_WIDTH - (8 * 2) - (3 * 10)) / 10)
-#define COLOR_BACKGROUND Color(238, 238, 238, 255)
-#define COLOR_BLACK      Color(0, 0, 0, 255)
-#define COLOR_BORDER     Color(204, 204, 204, 255)
-#define COLOR_BLUE       Color(0x3478e4FF)
+#define COLOR_BACKGROUND ((Color){ .r = 238, .g = 238, .b = 238, .a = 255 })
+#define COLOR_BLACK      ((Color){ .r =   0, .g =   0, .b =   0, .a = 255 })
+#define COLOR_BORDER     ((Color){ .r = 204, .g = 204, .b = 204, .a = 255 })
+#define COLOR_BLUE       ((Color){ .r =  52, .g = 120, .b = 228, .a = 255 })
 #define FONT_SIZE 24
 
 static char keymap[(10 * 4) - 3] = {
@@ -78,6 +66,11 @@ DECL_FUNCTION(void, OSScreenSetBufferEx, OSScreenID screen, void *addr)
     real_OSScreenSetBufferEx(screen, addr);
 }
 WUPS_MUST_REPLACE(OSScreenSetBufferEx, WUPS_LOADER_LIBRARY_COREINIT, OSScreenSetBufferEx);
+
+static inline uint32_t colorToOSScreen(Color color)
+{
+    return (((uint32_t)color.r) << 24) | (((uint32_t)color.g) << 16) | (((uint32_t)color.b) << 8) | ((uint32_t)color.a);
+}
 
 static void drawPixel(uint32_t x, uint32_t y, uint8_t r, uint8_t g, uint8_t b, uint8_t a) {
     if(a == 0)
@@ -149,7 +142,8 @@ static void draw_freetype_bitmap(SFT_Image *bmp, int32_t x, int32_t y) {
     int32_t x_max = x + bmp->width;
     int32_t y_max = y + bmp->height;
 
-    auto *src = (uint8_t *) bmp->pixels;
+    uint8_t *src = (uint8_t *) bmp->pixels;
+    float opacity;
 
     for (i = x, p = 0; i < x_max; i++, p++) {
         for (j = y, q = 0; j < y_max; j++, q++) {
@@ -157,15 +151,15 @@ static void draw_freetype_bitmap(SFT_Image *bmp, int32_t x, int32_t y) {
                 continue;
             }
 
-            float opacity = src[q * bmp->width + p] / 255.0f;
-            drawPixel(i, j, COLOR_BLACK.r, COLOR_BLACK.g, COLOR_BLACK.b, COLOR_BLACK.a * opacity);
+            opacity = src[q * bmp->width + p] / 255.0f;
+            drawPixel(i, j, 0x00, 0x00, 0x00, 0xFF * opacity);
         }
     }
 }
 
 static void print(uint32_t x, uint32_t y, const wchar_t *string) {
-    auto penX = (int32_t) x;
-    auto penY = (int32_t) y;
+    uint32_t penX = (int32_t) x;
+    uint32_t penY = (int32_t) y;
 
     uint16_t textureWidth = 0, textureHeight = 0;
     for (; *string; string++) {
@@ -179,7 +173,7 @@ static void print(uint32_t x, uint32_t y, const wchar_t *string) {
             textureHeight = mtx.minHeight;
 
             SFT_Image img = {
-                    .pixels = nullptr,
+                    .pixels = NULL,
                     .width  = textureWidth,
                     .height = textureHeight,
             };
@@ -190,7 +184,7 @@ static void print(uint32_t x, uint32_t y, const wchar_t *string) {
             if (textureHeight == 0)
                 textureHeight = 4;
 
-            auto buffer = new uint8_t[img.width * img.height];
+            uint8_t *buffer = MEMAllocFromDefaultHeap(img.width * img.height);
             if(!buffer)
                 return;
 
@@ -269,10 +263,10 @@ static uint32_t mapWiiButtons(uint32_t buttonMap)
     return ret;
 }
 
-void drawKeyboard(uint32_t x, uint32_t y, wchar_t *str, uint32_t maxLength)
+static void drawKeyboard(uint32_t x, uint32_t y, wchar_t *str, uint32_t maxLength)
 {
-    OSScreenClearBufferEx(SCREEN_DRC, COLOR_BACKGROUND.color);
-    OSScreenClearBufferEx(SCREEN_TV, COLOR_BACKGROUND.color);
+    OSScreenClearBufferEx(SCREEN_DRC, colorToOSScreen(COLOR_BACKGROUND));
+    OSScreenClearBufferEx(SCREEN_TV, colorToOSScreen(COLOR_BACKGROUND));
 
     drawRectFilled(8 + 3 + (x * (STEP + 3)), SCREEN_HEIGHT - 8 - 5 - (44 * 4) + 3 + (y * 44), STEP, 44 - 3, COLOR_BLUE);
 
@@ -322,7 +316,7 @@ void drawKeyboard(uint32_t x, uint32_t y, wchar_t *str, uint32_t maxLength)
 
 void renderKeyboard(char *str, uint32_t maxLength)
 {
-    void *font = nullptr;
+    void *font = NULL;
     uint32_t size = 0;
     OSGetSharedData(OS_SHAREDDATATYPE_FONT_STANDARD, 0, &font, &size);
 
@@ -331,10 +325,7 @@ void renderKeyboard(char *str, uint32_t maxLength)
 
     pFont.font = sft_loadmem(font, size);
     if(!pFont.font)
-    {
-        pFont = {};
         return;
-    }
 
     pFont.xScale = FONT_SIZE;
     pFont.yScale = FONT_SIZE;
@@ -358,7 +349,7 @@ void renderKeyboard(char *str, uint32_t maxLength)
     VPADStatus vpad;
     VPADReadError verror;
 
-    KPADStatus kpad{};
+    KPADStatus kpad;
     KPADError kerror;
 
     int32_t x = 0;
@@ -490,6 +481,4 @@ void renderKeyboard(char *str, uint32_t maxLength)
     } while(1);
 
     sft_freefont(pFont.font);
-    pFont.font = nullptr;
-    pFont = {};
 }
