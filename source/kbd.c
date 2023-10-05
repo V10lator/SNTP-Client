@@ -264,25 +264,63 @@ static uint32_t mapWiiButtons(uint32_t buttonMap)
     return ret;
 }
 
-static void drawKeyboard(uint32_t x, uint32_t y, wchar_t *str)
+static void drawKeyboard(uint32_t x, uint32_t y, const wchar_t *str, uint32_t cursor)
 {
     OSScreenClearBufferEx(SCREEN_DRC, colorToOSScreen(COLOR_BACKGROUND));
     OSScreenClearBufferEx(SCREEN_TV, colorToOSScreen(COLOR_BACKGROUND));
 
     drawRectFilled(8 + 3 + (x * (STEP + 3)), SCREEN_HEIGHT - 8 - 5 - (44 * 4) + 3 + (y * 44), STEP, 44 - 3, COLOR_BLUE);
 
-    wchar_t buf[MAX_NTP_SERVER_LENTGH];
+    wchar_t buf[MAX_NTP_SERVER_LENTGH + 1];
     for(y = 0; y < MAX_NTP_SERVER_LENTGH - 1; ++y)
         buf[y] = 'm';
 
-    buf[MAX_NTP_SERVER_LENTGH - 1] = 0;
+    buf[MAX_NTP_SERVER_LENTGH - 1] = ' ';
+    buf[MAX_NTP_SERVER_LENTGH] = 0;
     y = getTextWidth(buf);
+
+    for(x = 0; x < cursor; ++x)
+        buf[x] = str[x];
+
+    buf[cursor] = ' ';
+
+    x = cursor;
+    if(str[x] != 0)
+    {
+        for(; str[x] != 0; ++x)
+            buf[x + 1] = str[x];
+    }
+
+    buf[++x] = 0;
+
     x = (SCREEN_WIDTH / 2) - 8 - 3 - (y / 2),
     drawRectFilled(x, (SCREEN_HEIGHT / 2) - ((44 * 5) / 2) - (44 / 2), y + 16, 3, COLOR_BLUE);
     drawRectFilled(x, (SCREEN_HEIGHT / 2) - ((44 * 5) / 2) + (44 / 2), y + 16, 3, COLOR_BLUE);
     drawRectFilled(x, (SCREEN_HEIGHT / 2) - ((44 * 5) / 2) - (44 / 2), 3, 44 + 3, COLOR_BLUE);
     drawRectFilled(x + y + 16, (SCREEN_HEIGHT / 2) - ((44 * 5) / 2) - (44 / 2), 3, 44 + 3, COLOR_BLUE);
-    print((SCREEN_WIDTH / 2) - 3 - (y / 2), (SCREEN_HEIGHT / 2) - ((44 * 5) / 2) + (FONT_SIZE / 2), str);
+    x += 8;
+    print(x, (SCREEN_HEIGHT / 2) - ((44 * 5) / 2) + (FONT_SIZE / 2), buf);
+
+    for(y = 0; y < cursor; ++y)
+        buf[y] = str[y];
+
+    buf[cursor] = 0;
+    x += getTextWidth(buf);
+
+    buf[0] = ' ';
+    buf[1] = 0;
+    x += getTextWidth(buf) / 2;
+    x += 3;
+
+    drawRectFilled(x, ((SCREEN_HEIGHT / 2) - ((44 * 5) / 2) + (FONT_SIZE / 2)) + 3, 3, 2, COLOR_BLUE);
+    drawRectFilled(x, ((SCREEN_HEIGHT / 2) - ((44 * 5) / 2) - (FONT_SIZE / 2)) + 1, 3, 2, COLOR_BLUE);
+
+    x -= 4;
+    drawRectFilled(x, ((SCREEN_HEIGHT / 2) - ((44 * 5) / 2) - (FONT_SIZE / 2) - 1) + 6, 2, 20, COLOR_BLUE);
+
+    x -= 5;
+    drawRectFilled(x, ((SCREEN_HEIGHT / 2) - ((44 * 5) / 2) + (FONT_SIZE / 2)) + 3, 3, 2, COLOR_BLUE);
+    drawRectFilled(x, ((SCREEN_HEIGHT / 2) - ((44 * 5) / 2) - (FONT_SIZE / 2)) + 1, 3, 2, COLOR_BLUE);
 
     for(y = SCREEN_HEIGHT - 8 - 5; y > SCREEN_HEIGHT - (44 * 5); y -= 44)
         drawRectFilled(8, y, (STEP * 10) + (3 * 10), 3, COLOR_BORDER);
@@ -355,6 +393,7 @@ void renderKeyboard(char *str)
 
     int32_t x = 0;
     int32_t y = 0;
+    uint32_t cursor = size;
     uint32_t cooldown = 26;
     bool trigger = false;
 
@@ -418,10 +457,28 @@ void renderKeyboard(char *str)
             }
             if(vpad.trigger & VPAD_BUTTON_B)
             {
-                if(--size == (uint32_t)-1)
+                if(!cursor)
                     break;
 
-                wstr[size] = 0;
+                if(cursor == size)
+                    wstr[--size] = 0;
+                else
+                {
+                    --size;
+
+                    uint32_t i = cursor - 1;
+                    do
+                    {
+                        wstr[i] = wstr[i + 1];
+                        if(wstr[i] == 0)
+                            break;
+
+                        ++i;
+                    }
+                    while(1);
+                }
+
+                --cursor;
                 cooldown = 25;
             }
         }
@@ -442,11 +499,16 @@ void renderKeyboard(char *str)
                 {
                     if(size < MAX_NTP_SERVER_LENTGH - 1)
                     {
-                        wstr[size] = keymap[z];
+                        if(cursor != size)
+                            for(uint32_t i = size - 1; i > cursor - 1; --i)
+                                wstr[i + 1] = wstr[i];
+
+                        wstr[cursor] = keymap[z];
                         if(z != 29 && z > 9)
-                            wstr[size] += 32;
+                            wstr[cursor] += 32;
 
                         ++size;
+                        ++cursor;
                     }
                 }
                 else if(z == (4 * 10) - 1)
@@ -465,17 +527,19 @@ void renderKeyboard(char *str)
                 }
                 else if(z == (4 * 10) - 2)
                 {
-                    // TODO
+                    if(++cursor > size)
+                        --cursor;
                 }
                 else if(z == (4 * 10) - 3)
                 {
-                    // TODO
+                    if(--cursor == (uint32_t)-1)
+                        cursor = 0;
                 }
 
                 trigger = false;
             }
 
-            drawKeyboard(x, y, wstr);
+            drawKeyboard(x, y, wstr, cursor);
         }
 
         OSSleepTicks(OSMillisecondsToTicks(20));
