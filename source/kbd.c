@@ -56,11 +56,11 @@ DECL_FUNCTION(void, OSScreenSetBufferEx, OSScreenID screen, void *addr)
     {
         case SCREEN_TV:
             tvBuffer = (uint8_t *)addr;
-            tvSize = OSScreenGetBufferSizeEx(SCREEN_TV);
+            tvSize = OSScreenGetBufferSizeEx(SCREEN_TV) / 2;
             break;
         case SCREEN_DRC:
             drcBuffer = (uint8_t *)addr;
-            drcSize = OSScreenGetBufferSizeEx(SCREEN_DRC);
+            drcSize = OSScreenGetBufferSizeEx(SCREEN_DRC) / 2;
             break;
     }
 
@@ -81,9 +81,9 @@ static void drawPixel(uint32_t x, uint32_t y, uint8_t r, uint8_t g, uint8_t b, u
 
     // put pixel in the drc buffer
     uint32_t i = (x + y * DRC_WIDTH) * 4;
-    if (i + 3 < drcSize / 2) {
+    if (i + 3 < drcSize) {
         if (isBackBuffer) {
-            i += drcSize / 2;
+            i += drcSize;
         }
         if (a == 0xFF) {
             drcBuffer[i]   = r;
@@ -93,15 +93,15 @@ static void drawPixel(uint32_t x, uint32_t y, uint8_t r, uint8_t g, uint8_t b, u
             opacity = a / 255.0f;
             drcBuffer[i] = r * opacity + drcBuffer[i] * (1 - opacity);
             ++i;
-            drcBuffer[i] = g * opacity + drcBuffer[i + 1] * (1 - opacity);
+            drcBuffer[i] = g * opacity + drcBuffer[i] * (1 - opacity);
             ++i;
-            drcBuffer[i] = b * opacity + drcBuffer[i + 2] * (1 - opacity);
+            drcBuffer[i] = b * opacity + drcBuffer[i] * (1 - opacity);
         }
     }
 
     uint32_t USED_TV_WIDTH = TV_WIDTH;
     float scale            = 1.5f;
-    if (tvSize == 0x00FD2000) {
+    if (tvSize == 0x007E9000) {
         USED_TV_WIDTH = 1920;
         scale         = 2.25f;
     }
@@ -110,9 +110,9 @@ static void drawPixel(uint32_t x, uint32_t y, uint8_t r, uint8_t g, uint8_t b, u
     for (uint32_t yy = (y * scale); yy < ((y * scale) + (uint32_t) scale); yy++) {
         for (uint32_t xx = (x * scale); xx < ((x * scale) + (uint32_t) scale); xx++) {
             i = (xx + yy * USED_TV_WIDTH) * 4;
-            if (i + 3 < tvSize / 2) {
+            if (i + 3 < tvSize) {
                 if (isBackBuffer) {
-                    i += tvSize / 2;
+                    i += tvSize;
                 }
                 if (a == 0xFF) {
                     tvBuffer[i]   = r;
@@ -121,9 +121,9 @@ static void drawPixel(uint32_t x, uint32_t y, uint8_t r, uint8_t g, uint8_t b, u
                 } else {
                     tvBuffer[i] = r * opacity + tvBuffer[i] * (1 - opacity);
                     ++i;
-                    tvBuffer[i] = g * opacity + tvBuffer[i + 1] * (1 - opacity);
+                    tvBuffer[i] = g * opacity + tvBuffer[i] * (1 - opacity);
                     ++i;
-                    tvBuffer[i] = b * opacity + tvBuffer[i + 2] * (1 - opacity);
+                    tvBuffer[i] = b * opacity + tvBuffer[i] * (1 - opacity);
                 }
             }
         }
