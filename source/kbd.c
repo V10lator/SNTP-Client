@@ -77,26 +77,27 @@ static void drawPixel(uint32_t x, uint32_t y, uint8_t r, uint8_t g, uint8_t b, u
     if(a == 0)
         return;
 
+    uint32_t i = (x + y * DRC_WIDTH) * 4;
+    if(i + 2 >= drcSize)
+        return;
+
     float opacity = 0.0f;
 
     // put pixel in the drc buffer
-    uint32_t i = (x + y * DRC_WIDTH) * 4;
-    if (i + 3 < drcSize) {
-        if (isBackBuffer) {
-            i += drcSize;
-        }
-        if (a == 0xFF) {
-            drcBuffer[i]   = r;
-            drcBuffer[++i] = g;
-            drcBuffer[++i] = b;
-        } else {
-            opacity = a / 255.0f;
-            drcBuffer[i] = r * opacity + drcBuffer[i] * (1 - opacity);
-            ++i;
-            drcBuffer[i] = g * opacity + drcBuffer[i] * (1 - opacity);
-            ++i;
-            drcBuffer[i] = b * opacity + drcBuffer[i] * (1 - opacity);
-        }
+    if (isBackBuffer) {
+        i += drcSize;
+    }
+    if (a == 0xFF) {
+        drcBuffer[i]   = r;
+        drcBuffer[++i] = g;
+        drcBuffer[++i] = b;
+    } else {
+        opacity = a / 255.0f;
+        drcBuffer[i] = r * opacity + drcBuffer[i] * (1 - opacity);
+        ++i;
+        drcBuffer[i] = g * opacity + drcBuffer[i] * (1 - opacity);
+        ++i;
+        drcBuffer[i] = b * opacity + drcBuffer[i] * (1 - opacity);
     }
 
     uint32_t USED_TV_WIDTH = TV_WIDTH;
