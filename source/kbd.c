@@ -81,54 +81,60 @@ static void drawPixel(uint32_t x, uint32_t y, uint8_t r, uint8_t g, uint8_t b, u
     if(i + 2 >= drcSize)
         return;
 
-    float opacity = 0.0f;
-
     // put pixel in the drc buffer
-    if (isBackBuffer) {
+    if(isBackBuffer)
         i += drcSize;
+
+    uint32_t pixel;
+    float f;
+
+    if(a == 0xFF)
+    {
+        pixel = r;
+        pixel <<=  8;
+        pixel |= g;
+        pixel <<= 8;
+        pixel |= b;
+        pixel <<= 8;
+
     }
-    if (a == 0xFF) {
-        drcBuffer[i]   = r;
-        drcBuffer[++i] = g;
-        drcBuffer[++i] = b;
-    } else {
-        opacity = a / 255.0f;
-        drcBuffer[i] = r * opacity + drcBuffer[i] * (1 - opacity);
-        ++i;
-        drcBuffer[i] = g * opacity + drcBuffer[i] * (1 - opacity);
-        ++i;
-        drcBuffer[i] = b * opacity + drcBuffer[i] * (1 - opacity);
+    else
+    {
+        f = a / 255.0f;
+
+        pixel = (r * f) + (drcBuffer[i] * (1.0f - f));
+        pixel <<= 8;
+        pixel |= (uint32_t)((g * f) + (drcBuffer[++i] * (1.0f - f)));
+        pixel <<= 8;
+        pixel |= (uint32_t)((b * f) + (drcBuffer[++i] * (1.0f - f)));
+        pixel <<= 8;
+
+        i -= 2;
     }
 
-    uint32_t USED_TV_WIDTH = TV_WIDTH;
-    float scale            = 1.5f;
-    if (tvSize == 0x007E9000) {
+    *((uint32_t *)(drcBuffer + i)) = pixel;
+
+    uint32_t USED_TV_WIDTH;
+    if(tvSize == 0x007E9000)
+    {
         USED_TV_WIDTH = 1920;
-        scale         = 2.25f;
+        f             = 2.25f;
+    }
+    else
+    {
+        USED_TV_WIDTH = TV_WIDTH;
+        f             = 1.5f;
     }
 
-    // scale and put pixel in the tv buffer
-    for (uint32_t yy = (y * scale); yy < ((y * scale) + (uint32_t) scale); yy++) {
-        for (uint32_t xx = (x * scale); xx < ((x * scale) + (uint32_t) scale); xx++) {
+    for(uint32_t yy = (y * f); yy < ((y * f) + f); yy++)
+        for(uint32_t xx = (x * f); xx < ((x * f) + f); xx++)
+        {
             i = (xx + yy * USED_TV_WIDTH) * 4;
-            if (i + 3 < tvSize) {
-                if (isBackBuffer) {
-                    i += tvSize;
-                }
-                if (a == 0xFF) {
-                    tvBuffer[i]   = r;
-                    tvBuffer[++i] = g;
-                    tvBuffer[++i] = b;
-                } else {
-                    tvBuffer[i] = r * opacity + tvBuffer[i] * (1 - opacity);
-                    ++i;
-                    tvBuffer[i] = g * opacity + tvBuffer[i] * (1 - opacity);
-                    ++i;
-                    tvBuffer[i] = b * opacity + tvBuffer[i] * (1 - opacity);
-                }
-            }
+            if(isBackBuffer)
+                i += tvSize;
+
+            *((uint32_t *)(tvBuffer + i)) = pixel;
         }
-    }
 }
 
 static void drawRectFilled(uint32_t x, uint32_t y, uint32_t w, uint32_t h, Color col)
