@@ -218,7 +218,7 @@ static uint32_t getTextWidth(const wchar_t *string) {
         }
     }
 
-    return (uint32_t) width;
+    return width;
 }
 
 
