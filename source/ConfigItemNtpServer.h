@@ -9,19 +9,14 @@ extern "C" {
 
 typedef struct ConfigItemNtpServer {
     WUPSConfigItemHandle handle;
-    char defaultValue[MAX_NTP_SERVER_LENTGH];
-    char value[MAX_NTP_SERVER_LENTGH];
-    void *callback;
+    char *value;
 } ConfigItemNtpServer;
 
-typedef void (*NtpServerValueChangedCallback)(ConfigItemNtpServer *, const char *);
+bool WUPSConfigItemNtpServer_AddToCategory(WUPSConfigCategoryHandle cat, const char *configId, const char *displayName, char *value);
 
-bool WUPSConfigItemNtpServer_AddToCategory(WUPSConfigCategoryHandle cat, const char *configId, const char *displayName,
-                                              const char *defaultValue, NtpServerValueChangedCallback callback);
-
-#define WUPSConfigItemNtpServer_AddToCategoryHandled(__config__, __cat__, __configId__, __displayName__, __defaultValue__, __callback__)    \
+#define WUPSConfigItemNtpServer_AddToCategoryHandled(__config__, __cat__, __configId__, __displayName__, __value__)    \
     do {                                                                                                                                    \
-        if (!WUPSConfigItemNtpServer_AddToCategory(__cat__, __configId__, __displayName__, __defaultValue__, __callback__)) {               \
+        if (!WUPSConfigItemNtpServer_AddToCategory(__cat__, __configId__, __displayName__, __value__)) {               \
             WUPSConfig_Destroy(__config__);                                                                                                 \
             return 0;                                                                                                                       \
         }                                                                                                                                   \

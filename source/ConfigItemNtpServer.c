@@ -12,13 +12,8 @@ int32_t WUPSConfigItemNtpServer_getCurrentValueDisplay(void *context, char *out_
 }
 
 bool WUPSConfigItemNtpServer_callCallback(void *context) {
-    ConfigItemNtpServer *item = (ConfigItemNtpServer *) context;
-    if(item->callback != NULL)
-    {
-        ((NtpServerValueChangedCallback) item->callback)(item, item->value);
-        return true;
-    }
-    return false;
+    (void)context;
+    return true; // Trigger a save
 }
 
 
@@ -35,7 +30,7 @@ bool WUPSConfigItemNtpServer_isMovementAllowed(void *context) {
 
 void WUPSConfigItemNtpServer_restoreDefault(void *context) {
     ConfigItemNtpServer *item  = (ConfigItemNtpServer *) context;
-    strcpy(item->value, item->defaultValue);
+    strcpy(item->value, "pool.ntp.org");
 }
 
 void WUPSConfigItemNtpServer_onDelete(void *context) {
@@ -47,7 +42,7 @@ void WUPSConfigItemNtpServer_onSelected(void *context, bool isSelected) {
     (void)isSelected;
 }
 
-bool WUPSConfigItemNtpServer_AddToCategory(WUPSConfigCategoryHandle cat, const char *configId, const char *displayName, const char *defaultValue, NtpServerValueChangedCallback callback) {
+bool WUPSConfigItemNtpServer_AddToCategory(WUPSConfigCategoryHandle cat, const char *configId, const char *displayName, char *value) {
     if (cat == 0)
         return false;
 
@@ -55,9 +50,7 @@ bool WUPSConfigItemNtpServer_AddToCategory(WUPSConfigCategoryHandle cat, const c
     if (item == NULL)
         return false;
 
-    strncpy(item->defaultValue, defaultValue, MAX_NTP_SERVER_LENTGH - 1);
-    strcpy(item->value, item->defaultValue);
-    item->callback     = (void *) callback;
+    item->value = value;
 
     WUPSConfigCallbacks_t callbacks = {
             .getCurrentValueDisplay         = &WUPSConfigItemNtpServer_getCurrentValueDisplay,
