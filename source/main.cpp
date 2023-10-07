@@ -45,7 +45,7 @@
 // Important plugin information.
 WUPS_PLUGIN_NAME("SNTP Client");
 WUPS_PLUGIN_DESCRIPTION("A plugin that synchronizes a Wii U's clock with SNTP.");
-WUPS_PLUGIN_VERSION("v1.20");
+WUPS_PLUGIN_VERSION("v1.21");
 WUPS_PLUGIN_AUTHOR("Nightkingale & V10lator");
 WUPS_PLUGIN_LICENSE("MIT");
 
@@ -339,6 +339,11 @@ static void saveTimezone(ConfigItemMultipleValues *item, uint32_t value)
     changeTimezone(nullptr, value);
 }
 
+static void changeNtpServer()
+{
+    WUPS_StoreString(nullptr, NTPSERVER_CONFIG_ID, (const char *)ntp_server);
+}
+
 static OSThread *startThread(const char *name, OSThreadEntryPointFn mainfunc, size_t stacksize, OSThreadAttributes attribs)
 {
     OSThread *ost = static_cast<OSThread *>(MEMAllocFromDefaultHeapEx(sizeof(OSThread) + stacksize, 8));
@@ -483,7 +488,7 @@ WUPS_GET_CONFIG() {
 
     WUPSConfigItemBoolean_AddToCategoryHandled(settings, config, SYNCING_ENABLED_CONFIG_ID, "Syncing Enabled", enabledSync, &syncingEnabled);
     WUPSConfigItemMultipleValues_AddToCategoryHandled(settings, config, TIMEZONE_CONFIG_ID, "Timezone", timezone, timezonesReadable, sizeof(timezonesReadable) / sizeof(timezonesReadable[0]), &saveTimezone);
-    WUPSConfigItemNtpServer_AddToCategoryHandled(settings, config, NTPSERVER_CONFIG_ID, "NTP Server", (char *)ntp_server);
+    WUPSConfigItemNtpServer_AddToCategoryHandled(settings, config, NTPSERVER_CONFIG_ID, "NTP Server", (char *)ntp_server, &changeNtpServer);
 
     previewMask = 0;
     sysTimeHandle = WUPSConfigItemTime_AddToCategoryHandled(settings, preview, "sysTime", "Current SYS Time: Loading...", &previewMask, 1);

@@ -12,8 +12,14 @@ int32_t WUPSConfigItemNtpServer_getCurrentValueDisplay(void *context, char *out_
 }
 
 bool WUPSConfigItemNtpServer_callCallback(void *context) {
-    (void)context;
-    return true; // Trigger a save
+    ConfigItemNtpServer *item = (ConfigItemNtpServer *) context;
+    if(item->callback != NULL)
+    {
+        item->callback();
+        return true;
+    }
+
+    return false;
 }
 
 
@@ -42,7 +48,7 @@ void WUPSConfigItemNtpServer_onSelected(void *context, bool isSelected) {
     (void)isSelected;
 }
 
-bool WUPSConfigItemNtpServer_AddToCategory(WUPSConfigCategoryHandle cat, const char *configId, const char *displayName, char *value) {
+bool WUPSConfigItemNtpServer_AddToCategory(WUPSConfigCategoryHandle cat, const char *configId, const char *displayName, char *value, NtpServerValueChangedCallback callback) {
     if (cat == 0)
         return false;
 
@@ -51,6 +57,7 @@ bool WUPSConfigItemNtpServer_AddToCategory(WUPSConfigCategoryHandle cat, const c
         return false;
 
     item->value = value;
+    item->callback = callback;
 
     WUPSConfigCallbacks_t callbacks = {
             .getCurrentValueDisplay         = &WUPSConfigItemNtpServer_getCurrentValueDisplay,
