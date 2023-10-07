@@ -201,7 +201,7 @@ static OSTime NTPGetTime()
     ntp_packet packet __attribute__((__aligned__(0x40)));
 
     int sockfd = getaddrinfo((char *)ntp_server, "123", &hints, &addys);
-    if(!sockfd && addys != NULL)
+    if(!sockfd)
     {
         // Loop through all IP addys returned by the DNS
         for(struct addrinfo *addr = addys; addr != NULL; addr = addr->ai_next)
