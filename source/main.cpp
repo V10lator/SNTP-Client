@@ -122,6 +122,9 @@ static int notifMain(int argc, const char **argv)
     bool ready;
 
     NotificationModule_InitLibrary();
+    NotificationModule_SetDefaultValue(NOTIFICATION_MODULE_NOTIFICATION_TYPE_INFO, NOTIFICATION_MODULE_DEFAULT_OPTION_DURATION_BEFORE_FADE_OUT, 3.0f);
+    NotificationModule_SetDefaultValue(NOTIFICATION_MODULE_NOTIFICATION_TYPE_ERROR, NOTIFICATION_MODULE_DEFAULT_OPTION_DURATION_BEFORE_FADE_OUT, 7.0f);
+
     do
     {
         OSReceiveMessage(&notifQueue, &msg, OS_MESSAGE_FLAGS_BLOCKING);
