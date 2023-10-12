@@ -74,7 +74,7 @@ static volatile bool settingsThreadActive;
 static volatile uint32_t fakePress = false;
 
 // From https://github.com/lettier/ntpclient/blob/master/source/c/main.c
-typedef struct
+typedef struct WUT_PACKED
 {
     uint8_t li_vn_mode;      // Eight bits. li, vn, and mode.
                                 // li.   Two bits.   Leap indicator.
@@ -102,6 +102,21 @@ typedef struct
     uint32_t txTm_f;         // 32 bits. Transmit time-stamp fraction of a second.
 
 } ntp_packet;              // Total: 384 bits or 48 bytes.
+WUT_CHECK_OFFSET(ntp_packet, 0x01, stratum);
+WUT_CHECK_OFFSET(ntp_packet, 0x02, poll);
+WUT_CHECK_OFFSET(ntp_packet, 0x03, precision);
+WUT_CHECK_OFFSET(ntp_packet, 0x04, rootDelay);
+WUT_CHECK_OFFSET(ntp_packet, 0x08, rootDispersion);
+WUT_CHECK_OFFSET(ntp_packet, 0x0C, refId);
+WUT_CHECK_OFFSET(ntp_packet, 0x10, refTm_s);
+WUT_CHECK_OFFSET(ntp_packet, 0x14, refTm_f);
+WUT_CHECK_OFFSET(ntp_packet, 0x18, origTm_s);
+WUT_CHECK_OFFSET(ntp_packet, 0x1C, origTm_f);
+WUT_CHECK_OFFSET(ntp_packet, 0x20, rxTm_s);
+WUT_CHECK_OFFSET(ntp_packet, 0x24, rxTm_f);
+WUT_CHECK_OFFSET(ntp_packet, 0x28, txTm_s);
+WUT_CHECK_OFFSET(ntp_packet, 0x2C, txTm_f);
+WUT_CHECK_SIZE(ntp_packet, 0x30);
 
 typedef struct
 {
