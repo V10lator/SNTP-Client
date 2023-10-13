@@ -393,6 +393,7 @@ void renderKeyboard(char *str)
 
     VPADStatus vpad;
     VPADReadError verror;
+    bool vpadTouchHeld = false;
 
     KPADStatus kpad;
     KPADError kerror;
@@ -418,6 +419,33 @@ void renderKeyboard(char *str)
                 vpad.trigger |= VPAD_BUTTON_DOWN;
             if(vpad.trigger & VPAD_STICK_L_EMULATION_UP)
                 vpad.trigger |= VPAD_BUTTON_UP;
+
+            if(vpad.tpNormal.touched)
+            {
+                if(!vpadTouchHeld)
+                {
+                    vpadTouchHeld = true;
+                    VPADGetTPCalibratedPointEx(VPAD_CHAN_0, VPAD_TP_854X480, &vpad.tpFiltered1, &vpad.tpNormal);
+
+                    vpad.tpFiltered1.x -=  8 + 3;
+                    vpad.tpFiltered1.x /= STEP + 3;
+                    if(vpad.tpFiltered1.x < 10)
+                    {
+                        vpad.tpFiltered1.y -= SCREEN_HEIGHT - 8 - 5 - (44 * 4) + 3;
+                        vpad.tpFiltered1.y /= 44;
+                        if(vpad.tpFiltered1.y < 4)
+                        {
+                            x = vpad.tpFiltered1.x;
+                            y = vpad.tpFiltered1.y;
+                            trigger = true;
+                            cooldown = 26;
+                        }
+                    }
+                }
+            }
+            else
+                vpadTouchHeld = false;
+
         }
         else
             vpad.trigger = 0;
